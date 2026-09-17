@@ -83,7 +83,17 @@ class SimpleNet(nn.Module):
 
         ######## TODO ########
         # DO NOT change the code outside this part.
-
+        # A stack of time-conditioned linear layers followed by a plain output
+        # head. Each TimeLinear modulates its output by the embedding of t, so
+        # the same network can estimate the noise at any diffusion timestep.
+        dims = [dim_in] + list(dim_hids)
+        self.layers = nn.ModuleList(
+            [
+                TimeLinear(dims[i], dims[i + 1], num_timesteps)
+                for i in range(len(dims) - 1)
+            ]
+        )
+        self.out_layer = nn.Linear(dims[-1], dim_out)
         ######################
 
     def forward(self, x: torch.Tensor, t: torch.Tensor):
@@ -97,6 +107,10 @@ class SimpleNet(nn.Module):
         """
         ######## TODO ########
         # DO NOT change the code outside this part.
-
+        # No activation after the output head: the noise being predicted is
+        # unbounded, so the last layer stays linear.
+        for layer in self.layers:
+            x = F.relu(layer(x, t))
+        x = self.out_layer(x)
         ######################
         return x

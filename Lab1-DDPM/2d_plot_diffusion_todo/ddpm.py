@@ -87,7 +87,9 @@ class DiffusionModule(nn.Module):
         # DO NOT change the code outside this part.
         # Compute xt.
         alphas_prod_t = extract(self.var_scheduler.alphas_cumprod, t, x0)
-        xt = x0
+        # q(x_t | x_0) = N(x_t; sqrt(alpha_bar_t) x_0, (1 - alpha_bar_t) I),
+        # reparameterised so the sample is differentiable w.r.t. x0.
+        xt = alphas_prod_t.sqrt() * x0 + (1 - alphas_prod_t).sqrt() * noise
 
         #######################
 
@@ -119,13 +121,22 @@ class DiffusionModule(nn.Module):
         alpha_bar_t_prev = extract(self.var_scheduler.alphas_cumprod, t_prev, xt) # \bar{α}_{t-1}
 
         # 1. predict noise
-        
+        eps_theta = self.network(xt, t)
+
         # 2. Posterior mean
-        
+        # mu_theta = 1/sqrt(alpha_t) * (x_t - (1-alpha_t)/sqrt(1-alpha_bar_t) * eps)
+        mean = (xt - eps_factor * eps_theta) / alpha_t.sqrt()
+
         # 3. Posterior variance
-        
+        # sigma_t^2 = beta_tilde_t = (1-alpha_bar_{t-1})/(1-alpha_bar_t) * beta_t
+        var = (1 - alpha_bar_t_prev) / (1 - alpha_bar_t) * beta_t
+
         # 4. Reverse step
-        
+        # No noise is added on the final step (t == 0), per Algorithm 2.
+        noise = torch.randn_like(xt)
+        nonzero_mask = (t > 0).float().reshape(-1, *([1] * (xt.ndim - 1)))
+        x_t_prev = mean + nonzero_mask * var.sqrt() * noise
+
         #######################
         return x_t_prev
 
@@ -143,8 +154,11 @@ class DiffusionModule(nn.Module):
         # DO NOT change the code outside this part.
         # sample x0 based on Algorithm 2 of DDPM paper.
         xt = torch.randn(shape).to(self.device)
-        x0_pred = None
-        
+        # var_scheduler.timesteps runs from T-1 down to 0.
+        for t in self.var_scheduler.timesteps:
+            xt = self.p_sample(xt, t.to(self.device))
+        x0_pred = xt
+
         ######################
         return x0_pred
 
@@ -232,12 +246,14 @@ class DiffusionModule(nn.Module):
             .long()
         )
         # 2) get GT noise, and use q_sample to get x_t
-        
-        # 3) predict noise 
-        
+        eps = torch.randn_like(x0)
+        xt = self.q_sample(x0, t, noise=eps)
+
+        # 3) predict noise
+        eps_pred = self.network(xt, t)
+
         # 4) MSE loss (eps, eps_pred)
-        
-        loss = None
+        loss = F.mse_loss(eps_pred, eps)
 
         ######################
         return loss
