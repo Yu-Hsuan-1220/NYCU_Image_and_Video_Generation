@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.ipynb_checkpoints
+.pytest_cache/
+
+# Data / outputs
+data/
+results/
+outputs/
+samples/
+*.ckpt
+*.pth
+*.pt
+
+# Misc
+.DS_Store
+.release-stamp
