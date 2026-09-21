@@ -514,6 +514,115 @@ the reverse process never actually uses.
 
 \subsection{Trajectory figures and three beta schedulers}
 
+In this section the predictor is fixed to \textbf{noise} so that the beta scheduler is the only
+variable. All three runs were trained for the same number of iterations (100k).
+
+\subsubsection{The schedules themselves}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{assets/task2/beta_alpha_schedule.png}
+\caption{$\beta_t$ (left) and $\bar{\alpha}_t$ (right) for the three schedules, with $T=1000$,
+$\beta_1 = 10^{-4}$ and $\beta_T = 0.02$.}
+\label{fig:schedules}
+\end{figure}
+
+The left panel of \autoref{fig:schedules} shows that \textbf{linear} uses the largest $\beta_t$ over
+almost the entire range: it already injects a noticeable amount of noise at small $t$, whereas
+cosine stays close to zero until roughly $t \approx 600$ and only then rises steeply (the spike near
+$t \approx 900$ is the singularity discussed in Section 3.1.2, held in check by the $0.999$ clip).
+Quadratic sits between the two.
+
+The right panel is the one that matters in practice, since $\bar{\alpha}_t$ is what actually
+controls how much of $\mathbf{x}_0$ survives. The contrast is sharp:
+
+\begin{table}[H]
+\centering
+\caption{How quickly each schedule destroys the signal.}
+\label{tab:schedule_decay}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Schedule} & $\bar{\alpha}_t < 0.5$ \textbf{at} & $\bar{\alpha}_t < 0.01$ \textbf{at} \\
+\midrule
+linear & $t = 259$ & $t = 673$ \\
+quad   & $t = 418$ & $t = 850$ \\
+cosine & $t = 496$ & $t = 935$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Under the linear schedule half of the signal is already gone by $t \approx 260$, and from
+$t \approx 670$ onwards the input is indistinguishable from pure noise --- meaning roughly a third of
+the diffusion trajectory carries no information at all. The cosine schedule reaches the same point
+only at $t \approx 935$, so the corruption is spread far more evenly across the trajectory.
+
+\subsubsection{Denoising trajectories}
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}[b]{\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{assets/task2/denoise_traj/linear_noise_99800.png}
+    \caption{linear}
+\end{subfigure}
+\\[4pt]
+\begin{subfigure}[b]{\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{assets/task2/denoise_traj/quad_noise_99800.png}
+    \caption{quad}
+\end{subfigure}
+\\[4pt]
+\begin{subfigure}[b]{\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{assets/task2/denoise_traj/cosine_noise_99800.png}
+    \caption{cosine}
+\end{subfigure}
+\caption{Denoising trajectories, 10 evenly spaced frames from $t=1000$ (left) to $t=0$ (right).
+Note that each row is a different random seed, so the rows should be compared by \emph{when}
+structure appears, not by which animal looks better.}
+\label{fig:traj}
+\end{figure}
+
+The frames in \autoref{fig:traj} are spaced about $111$ timesteps apart. Reading the middle of each
+row, the ordering predicted by $\bar{\alpha}_t$ is clearly visible: at $t \approx 445$ the cosine row
+already shows coarse colour regions and a rough head outline, quadratic shows only faint
+low-frequency blobs, and linear is still indistinguishable from noise. Linear does not produce
+recognisable structure until $t \approx 334$, and its face only sharpens over the final two frames.
+
+In other words, under the linear schedule the first half of the reverse process does almost nothing
+visible, and all of the perceptually meaningful work is compressed into the last few hundred steps.
+Cosine distributes that work across a much wider range of $t$.
+
+\subsubsection{FID comparison}
+
+\begin{table}[H]
+\centering
+\caption{FID of the three beta schedulers (noise predictor, 100k iterations).}
+\label{tab:fid_scheduler}
+\begin{tabular}{lc}
+\toprule
+\textbf{Schedule} & \textbf{FID} \\
+\midrule
+linear & \textbf{8.29} \\
+quad   & 13.08 \\
+cosine & 14.56 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+All three schedules comfortably clear the target of $\text{FID} < 15$, so from the point of view of
+the assignment they are all successful. It is worth being honest about the ranking, though: despite
+the cleaner trajectory shown above, \textbf{cosine does not beat linear here} --- linear is in fact
+the best of the three by a clear margin.
+
+This does not contradict the analysis above; it shows that ``wasting'' steps at high $t$ is not the
+bottleneck in this particular setting. Once the full 1000-step reverse process is run, those
+uninformative steps cost sampling time but not sample quality, because the model simply passes
+near-identical noise through them. The cosine schedule's documented advantage comes mainly from
+harder, more diverse datasets and from regimes where the sampling steps are truncated; AFHQ at
+$64\times64$ is a narrow, well-aligned domain where the linear schedule is already well matched to
+the data.
+
 \subsection{Result of different Predictors and discuss}
 
 \subsection{Training and FID score}
