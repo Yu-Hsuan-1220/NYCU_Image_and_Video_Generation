@@ -16,3 +16,5 @@ samples/
 # Misc
 .DS_Store
 .release-stamp
+
+build/
