@@ -88,8 +88,25 @@ heightrounded, % to avoid spurious underfull messages
 
 \section{Introduction}
 
+Denoising Diffusion Probabilistic Models (DDPM) generate data by learning to reverse a gradual
+noising procedure: a forward process slowly corrupts a data sample into pure Gaussian noise, and a
+neural network is trained to undo that corruption step by step, so that new samples can be produced
+by denoising from random noise.
+
+In this lab, I implement DDPM from scratch and study it at two different scales. Task 1 models a 2D
+Swiss Roll distribution, where the sampling process can be plotted directly and thus serves as a
+sanity check for the implementation. Task 2 scales the same formulation up to image generation, and
+further explores how different beta schedulers and prediction targets affect the denoising process
+and the quality of the generated samples.
+
 
 \section{Task 1 - Swiss Roll}
+
+In this task, I model a 2D Swiss Roll distribution with a DDPM. I implement \texttt{SimpleNet}, a
+time-conditioned network that predicts the noise added to a sample, together with the core routines
+of the algorithm: \texttt{q\_sample} for the forward process, \texttt{p\_sample} and
+\texttt{p\_sample\_loop} for the reverse process, and the training loss. Since the data is only two
+dimensional, both the forward corruption and the learned distribution can be visualized directly.
 
 \subsection{Implementation details}
 
@@ -99,6 +116,13 @@ heightrounded, % to avoid spurious underfull messages
 
 
 \section{Task 2 - Image Generation}
+
+This task applies the same diffusion formulation to a much higher-dimensional distribution: AFHQ
+animal-face images at a resolution of $64 \times 64$, using a UNet as the prediction network. Besides
+the components of Task 1, I additionally implement three beta schedulers (linear, quadratic, cosine)
+and three prediction targets (noise, $\mathbf{x}_0$, mean). I then train the model under different
+scheduler and predictor combinations, observe the denoising trajectories, and evaluate the sample
+quality with FID.
 
 \subsection{Implementation details}
 
