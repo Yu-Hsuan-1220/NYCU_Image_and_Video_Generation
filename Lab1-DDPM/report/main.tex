@@ -3,7 +3,7 @@
 \usepackage{xeCJK}       %讓中英文字體分開設置
 \usepackage{indentfirst}
 \usepackage{listings}
-\usepackage[newfloat]{minted}
+\usepackage[newfloat]{minted2}
 \usepackage{float}
 \usepackage{graphicx}
 \usepackage{caption}
@@ -110,7 +110,172 @@ dimensional, both the forward corruption and the learned distribution can be vis
 
 \subsection{Implementation details}
 
-\subsection{q\_sample implementation} 
+\subsubsection{TODO \#1 - SimpleNet}
+
+\begin{code}
+\captionof{listing}{\textbf{SimpleNet: constructor and forward pass}}
+\label{code:simplenet}
+\begin{minted}
+dims = [dim_in] + list(dim_hids)
+self.layers = nn.ModuleList(
+    [
+        TimeLinear(dims[i], dims[i + 1], num_timesteps)
+        for i in range(len(dims) - 1)
+    ]
+)
+self.out_layer = nn.Linear(dims[-1], dim_out)
+
+def forward(self, x, t):
+    for layer in self.layers:
+        x = F.relu(layer(x, t))
+    x = self.out_layer(x)
+    return x
+\end{minted}
+\end{code}
+
+I build the hidden stack by chaining \texttt{dim\_in} with \texttt{dim\_hids}, so that consecutive
+entries of \texttt{dims} give the input/output width of each layer. Every hidden layer is a
+\texttt{TimeLinear}, which applies a linear map and then rescales the result channel-wise by the
+embedding of $t$:
+\begin{equation}
+    \texttt{TimeLinear}(x, t) = \boldsymbol{\alpha}(t) \odot (Wx + b).
+\end{equation}
+This is what makes the network \emph{time-conditioned}: one single set of weights is shared across
+all $T$ timesteps, and the timestep only modulates the activations. Without this, we would need a
+separate network per timestep, which is clearly infeasible.
+
+The output head is a plain \texttt{nn.Linear} with no activation afterwards. The quantity being
+predicted is the Gaussian noise $\boldsymbol{\epsilon}$, which is unbounded and can be negative, so
+applying ReLU (or any squashing function) at the output would make it impossible to represent
+roughly half of the target values. ReLU is only used \emph{between} hidden layers to provide
+non-linearity.
+
+\subsubsection{TODO \#2 - q\_sample}
+
+\begin{code}
+\captionof{listing}{\textbf{Forward process} $q(\mathbf{x}_t \mid \mathbf{x}_0)$}
+\label{code:q_sample}
+\begin{minted}
+alphas_prod_t = extract(self.var_scheduler.alphas_cumprod, t, x0)
+xt = alphas_prod_t.sqrt() * x0 + (1 - alphas_prod_t).sqrt() * noise
+\end{minted}
+\end{code}
+
+The forward process is a Markov chain that adds Gaussian noise step by step, but because every step
+is Gaussian, the marginal at an arbitrary $t$ has the closed form
+\begin{equation}
+    q(\mathbf{x}_t \mid \mathbf{x}_0) = \mathcal{N}\!\left(\mathbf{x}_t;\ \sqrt{\bar{\alpha}_t}\,\mathbf{x}_0,\ (1-\bar{\alpha}_t)\mathbf{I}\right),
+    \qquad \bar{\alpha}_t = \prod_{s=1}^{t}(1-\beta_s).
+\end{equation}
+Using the reparameterization trick, sampling from this distribution is written as
+\begin{equation}
+    \label{eq:reparam}
+    \mathbf{x}_t = \sqrt{\bar{\alpha}_t}\,\mathbf{x}_0 + \sqrt{1-\bar{\alpha}_t}\,\boldsymbol{\epsilon},
+    \qquad \boldsymbol{\epsilon}\sim\mathcal{N}(\mathbf{0},\mathbf{I}),
+\end{equation}
+which is exactly the code above. The key benefit is that we can jump to any timestep in
+$\mathcal{O}(1)$ instead of simulating $t$ steps of the chain, which is what makes it possible to
+train on a randomly sampled $t$ in each iteration. The helper \texttt{extract} gathers
+$\bar{\alpha}_t$ for each element of the batch and reshapes it to $(B,1)$ so that it broadcasts
+against $\mathbf{x}_0$.
+
+\subsubsection{TODO \#3 - p\_sample}
+
+\begin{code}
+\captionof{listing}{\textbf{One reverse step} $\mathbf{x}_t \rightarrow \mathbf{x}_{t-1}$}
+\label{code:p_sample}
+\begin{minted}
+# 1. predict noise
+eps_theta = self.network(xt, t)
+
+# 2. Posterior mean
+mean = (xt - eps_factor * eps_theta) / alpha_t.sqrt()
+
+# 3. Posterior variance
+var = (1 - alpha_bar_t_prev) / (1 - alpha_bar_t) * beta_t
+
+# 4. Reverse step
+noise = torch.randn_like(xt)
+nonzero_mask = (t > 0).float().reshape(-1, *([1] * (xt.ndim - 1)))
+x_t_prev = mean + nonzero_mask * var.sqrt() * noise
+\end{minted}
+\end{code}
+
+The reverse step samples from $p_\theta(\mathbf{x}_{t-1}\mid\mathbf{x}_t) = \mathcal{N}(\boldsymbol{\mu}_\theta, \sigma_t^2\mathbf{I})$.
+
+\textbf{Mean.} Rearranging \autoref{eq:reparam} gives an estimate of $\mathbf{x}_0$ from the
+predicted noise, and substituting it into the true posterior mean collapses everything into
+\begin{equation}
+    \boldsymbol{\mu}_\theta(\mathbf{x}_t, t) = \frac{1}{\sqrt{\alpha_t}}\left(\mathbf{x}_t - \frac{1-\alpha_t}{\sqrt{1-\bar{\alpha}_t}}\,\boldsymbol{\epsilon}_\theta(\mathbf{x}_t,t)\right).
+\end{equation}
+The template already provides \texttt{eps\_factor} $= (1-\alpha_t)/\sqrt{1-\bar{\alpha}_t}$, so the
+implementation is a direct transcription of this formula. Intuitively, the network estimates how
+much noise is in $\mathbf{x}_t$, we subtract a scaled version of it, and then rescale by
+$1/\sqrt{\alpha_t}$ to undo the shrinkage applied by the forward step.
+
+\textbf{Variance.} I use the true posterior variance
+\begin{equation}
+    \sigma_t^2 = \tilde{\beta}_t = \frac{1-\bar{\alpha}_{t-1}}{1-\bar{\alpha}_t}\beta_t .
+\end{equation}
+The DDPM paper shows that both $\beta_t$ and $\tilde{\beta}_t$ work in practice; $\tilde{\beta}_t$
+corresponds to the optimal choice when $\mathbf{x}_0$ is drawn from the data distribution. Note that
+\texttt{t\_prev} is clamped to $0$ so that the index stays valid at $t=0$; the value it produces
+there is never used, because of the mask described next.
+
+\textbf{Adding noise back.} Following Algorithm 2 of the paper, the extra noise term is added at
+every step \emph{except} the last one. At $t=0$ we want the final clean output, so returning the
+mean directly avoids re-corrupting the sample we just finished denoising. Instead of branching with
+an \texttt{if}, I use \texttt{nonzero\_mask}, which is computed per batch element and reshaped to
+broadcast over the trailing dimensions --- this keeps the code correct even when $t$ differs across
+the batch, and works unchanged for both 2D points and images.
+
+\subsubsection{TODO \#4 - p\_sample\_loop}
+
+\begin{code}
+\captionof{listing}{\textbf{Full reverse process}}
+\label{code:p_sample_loop}
+\begin{minted}
+xt = torch.randn(shape).to(self.device)
+for t in self.var_scheduler.timesteps:
+    xt = self.p_sample(xt, t.to(self.device))
+x0_pred = xt
+\end{minted}
+\end{code}
+
+Generation starts from pure Gaussian noise $\mathbf{x}_T \sim \mathcal{N}(\mathbf{0},\mathbf{I})$ and
+repeatedly applies the single-step denoiser. Since \texttt{var\_scheduler.timesteps} is constructed
+as \texttt{arange(0, T)[::-1]}, iterating over it already walks $T-1 \rightarrow 0$ in the correct
+descending order, so no extra reversal is needed. The \texttt{.to(self.device)} call is required
+because \texttt{timesteps} is stored as a plain CPU tensor rather than a registered buffer. After the
+loop finishes, $\mathbf{x}_0$ is the generated sample.
+
+\subsubsection{TODO \#5 - compute\_loss}
+
+\begin{code}
+\captionof{listing}{\textbf{Noise matching loss}}
+\label{code:compute_loss}
+\begin{minted}
+eps = torch.randn_like(x0)
+xt = self.q_sample(x0, t, noise=eps)
+eps_pred = self.network(xt, t)
+loss = F.mse_loss(eps_pred, eps)
+\end{minted}
+\end{code}
+
+This implements the simplified objective (Equation 14 of the DDPM paper):
+\begin{equation}
+    \mathcal{L}_{\text{simple}} = \mathbb{E}_{\mathbf{x}_0,\,\boldsymbol{\epsilon},\,t}
+    \left[\left\lVert \boldsymbol{\epsilon} - \boldsymbol{\epsilon}_\theta(\mathbf{x}_t, t)\right\rVert^2\right].
+\end{equation}
+The expectation over $t$ is estimated by uniformly sampling one timestep per element in the batch,
+which is far cheaper than summing all $T$ terms and is unbiased in expectation.
+
+The important detail is that I sample \texttt{eps} explicitly and pass it into \texttt{q\_sample},
+instead of letting \texttt{q\_sample} draw its own noise internally. The loss target must be exactly
+the same noise that was used to corrupt $\mathbf{x}_0$; if two independent noises were drawn, the
+network would be regressing towards an unrelated sample and the training signal would vanish.
+
+\subsection{q\_sample implementation}
 
 \subsection{Loss curve and output distribution}
 
@@ -125,6 +290,180 @@ scheduler and predictor combinations, observe the denoising trajectories, and ev
 quality with FID.
 
 \subsection{Implementation details}
+
+\subsubsection{TODO \#1 - add\_noise}
+
+\begin{code}
+\captionof{listing}{\textbf{Forward process in image space}}
+\label{code:add_noise}
+\begin{minted}
+alpha_bar_t = extract(self.alphas_cumprod, t, x_0)
+x_t = alpha_bar_t.sqrt() * x_0 + (1 - alpha_bar_t).sqrt() * eps
+\end{minted}
+\end{code}
+
+This is the same closed-form forward process as \texttt{q\_sample} in Task 1
+(\autoref{eq:reparam}); only the tensor shape changes from $(B,2)$ to $(B,C,H,W)$. Since
+\texttt{extract} reshapes $\bar{\alpha}_t$ to $(B,1,1,1)$, the identical expression broadcasts
+correctly over images without any modification.
+
+\subsubsection{TODO \#2 - Cosine beta scheduler}
+
+\begin{code}
+\captionof{listing}{\textbf{Cosine beta schedule} (Nichol \& Dhariwal, 2021)}
+\label{code:cosine}
+\begin{minted}
+s = 0.008
+ts = torch.linspace(0, num_train_timesteps, num_train_timesteps + 1)
+ts = ts / num_train_timesteps
+alphas_cumprod = torch.cos((ts + s) / (1 + s) * np.pi * 0.5) ** 2
+alphas_cumprod = alphas_cumprod / alphas_cumprod[0].clone()
+betas = 1 - alphas_cumprod[1:] / alphas_cumprod[:-1]
+betas = betas.clamp(max=0.999)
+\end{minted}
+\end{code}
+
+Unlike the linear and quadratic modes, which define $\beta_t$ directly, the cosine schedule defines
+the \emph{cumulative} product first and then derives $\beta_t$ from it:
+\begin{equation}
+    \bar{\alpha}_t = \frac{f(t)}{f(0)}, \qquad
+    f(t) = \cos^2\!\left(\frac{t/T + s}{1+s}\cdot\frac{\pi}{2}\right), \qquad
+    \beta_t = 1 - \frac{\bar{\alpha}_t}{\bar{\alpha}_{t-1}}.
+\end{equation}
+
+A few implementation details are worth noting. First, I build $T+1$ points of $\bar{\alpha}$ rather
+than $T$: since each $\beta_t$ is a ratio of two \emph{consecutive} entries, taking
+\texttt{alphas\_cumprod[1:] / alphas\_cumprod[:-1]} on $T+1$ values produces exactly $T$ betas.
+Second, dividing by $f(0)$ normalizes the schedule so that $\bar{\alpha}_0 = 1$, i.e.\ no noise has
+been added at the very beginning. Third, the offset $s = 0.008$ shifts the curve slightly away from
+$t=0$, which prevents $\beta_t$ from becoming vanishingly small at the start --- with $s=0$ the
+first few steps would add almost no noise and be wasted. Finally, as $t \rightarrow T$ the cosine
+approaches zero, so the ratio $\bar{\alpha}_t/\bar{\alpha}_{t-1}$ becomes singular and $\beta_t$
+blows up; clipping at $0.999$ keeps $\alpha_t = 1-\beta_t$ strictly positive so that
+$\sqrt{\alpha_t}$ in the reverse step never degenerates.
+
+The motivation is that the linear schedule destroys information too aggressively near the end of the
+forward process: $\bar{\alpha}_t$ drops to nearly zero well before $t=T$, so the final steps operate
+on what is already pure noise and contribute little. The cosine schedule makes $\bar{\alpha}_t$
+decay closer to linearly, which spreads the useful signal over a larger portion of the trajectory.
+
+\subsubsection{TODO \#3 - Predictors}
+
+All three predictors sample from the same posterior
+$q(\mathbf{x}_{t-1}\mid\mathbf{x}_t,\mathbf{x}_0) = \mathcal{N}(\tilde{\boldsymbol{\mu}}_t, \tilde{\beta}_t\mathbf{I})$,
+where
+\begin{equation}
+    \label{eq:posterior}
+    \tilde{\boldsymbol{\mu}}_t(\mathbf{x}_t, \mathbf{x}_0) =
+    \frac{\sqrt{\bar{\alpha}_{t-1}}\,\beta_t}{1-\bar{\alpha}_t}\mathbf{x}_0
+    + \frac{\sqrt{\alpha_t}\,(1-\bar{\alpha}_{t-1})}{1-\bar{\alpha}_t}\mathbf{x}_t,
+    \qquad
+    \tilde{\beta}_t = \frac{1-\bar{\alpha}_{t-1}}{1-\bar{\alpha}_t}\beta_t .
+\end{equation}
+They differ only in \emph{how} the network output is turned into the $\mathbf{x}_0$ (or mean) that
+this formula needs.
+
+\begin{code}
+\captionof{listing}{\textbf{Noise predictor} (\texttt{step\_predict\_noise})}
+\label{code:step_noise}
+\begin{minted}
+is_first = (t == 0).reshape(-1, *([1] * (x_t.ndim - 1)))
+alpha_bar_t_prev = extract(self.alphas_cumprod, (t - 1).clamp(min=0), x_t)
+alpha_bar_t_prev = torch.where(
+    is_first, torch.ones_like(alpha_bar_t_prev), alpha_bar_t_prev
+)
+
+# Invert the forward process to recover the predicted clean sample.
+x0_pred = (x_t - (1 - alpha_bar_t).sqrt() * eps_theta) / alpha_bar_t.sqrt()
+x0_pred = x0_pred.clamp(-1, 1)
+
+mean = (
+    alpha_bar_t_prev.sqrt() * beta_t / (1 - alpha_bar_t) * x0_pred
+    + alpha_t.sqrt() * (1 - alpha_bar_t_prev) / (1 - alpha_bar_t) * x_t
+)
+var = (1 - alpha_bar_t_prev) / (1 - alpha_bar_t) * beta_t
+
+noise = torch.randn_like(x_t)
+nonzero_mask = (~is_first).to(x_t.dtype)
+sample_prev = mean + nonzero_mask * var.sqrt() * noise
+\end{minted}
+\end{code}
+
+\textbf{Handling $\bar{\alpha}_{t-1}$ at $t=0$.} Indexing with \texttt{(t-1).clamp(min=0)} alone
+would return $\bar{\alpha}_0$, which is wrong; the correct convention is $\bar{\alpha}_{-1}=1$, so I
+overwrite that entry with \texttt{torch.where}. This is not merely cosmetic: substituting
+$\bar{\alpha}_{-1}=1$ into \autoref{eq:posterior} together with
+$1-\bar{\alpha}_0 = \beta_0$ makes the second term vanish and reduces the mean to exactly
+$\hat{\mathbf{x}}_0$, while $\tilde{\beta}_0$ becomes $0$. In other words, the final reverse step
+returns the predicted clean image directly, and the variance term switches itself off. The
+\texttt{nonzero\_mask} is therefore redundant in exact arithmetic, but I keep it explicit so that the
+intent (Algorithm 2 adds no noise on the last step) is visible and no $\sqrt{0}$ gradient issues can
+arise.
+
+\textbf{Clamping.} $\hat{\mathbf{x}}_0$ is recovered by inverting the forward process, which divides
+by $\sqrt{\bar{\alpha}_t}$. At large $t$ this factor is tiny, so any error in the predicted noise is
+strongly amplified and can push $\hat{\mathbf{x}}_0$ far outside the valid range. Since the training
+images are normalized to $[-1,1]$, clamping is a free and effective way to stop that error from
+propagating into the next step.
+
+\begin{code}
+\captionof{listing}{\textbf{x0 and mean predictors} (differing parts only)}
+\label{code:step_x0_mean}
+\begin{minted}
+# step_predict_x0: the network already outputs x0, so nothing to invert.
+x0_pred = x0_pred.clamp(-1, 1)
+mean = (
+    alpha_bar_t_prev.sqrt() * beta_t / (1 - alpha_bar_t) * x0_pred
+    + alpha_t.sqrt() * (1 - alpha_bar_t_prev) / (1 - alpha_bar_t) * x_t
+)
+
+# step_predict_mean: the network output *is* the posterior mean.
+mean = mean_theta
+\end{minted}
+\end{code}
+
+For the \textbf{x0 predictor}, the network directly outputs $\hat{\mathbf{x}}_0$, so the inversion
+step disappears and the same posterior formula is reused unchanged. Clamping still applies, because
+the output is meant to be an image.
+
+For the \textbf{mean predictor}, the network output is already $\tilde{\boldsymbol{\mu}}_t$, so only
+the variance term remains to be computed. Importantly I do \emph{not} clamp here: the posterior mean
+is a blend of $\mathbf{x}_0$ and the noisy $\mathbf{x}_t$, and $\mathbf{x}_t$ is not bounded to
+$[-1,1]$, so clamping would systematically bias the trajectory.
+
+\subsubsection{TODO \#4 - Loss functions}
+
+\begin{code}
+\captionof{listing}{\textbf{x0 loss and mean loss}}
+\label{code:losses}
+\begin{minted}
+# get_loss_x0
+t = self.var_scheduler.uniform_sample_t(B, x0.device)
+x_t, eps = self.var_scheduler.add_noise(x0, t, eps=noise)
+x0_pred = self.network(x_t, t)
+loss = F.mse_loss(x0_pred, x0)
+
+# get_loss_mean: regress onto the TRUE posterior mean, built from the real x0.
+mean_pred = self.network(x_t, t)
+mean_true = (
+    alpha_bar_t_prev.sqrt() * beta_t / (1 - alpha_bar_t) * x0
+    + alpha_t.sqrt() * (1 - alpha_bar_t_prev) / (1 - alpha_bar_t) * x_t
+)
+loss = F.mse_loss(mean_pred, mean_true)
+\end{minted}
+\end{code}
+
+All three losses share the same skeleton: sample a random $t$, corrupt $\mathbf{x}_0$ with
+\texttt{add\_noise}, run the network, and take an MSE against the corresponding target. Only the
+regression target differs --- $\boldsymbol{\epsilon}$, $\mathbf{x}_0$, or
+$\tilde{\boldsymbol{\mu}}_t$ respectively.
+
+The mean loss is the only one that needs extra work, because its target is not something we already
+have on hand: it must be computed from \autoref{eq:posterior} using the \emph{ground-truth}
+$\mathbf{x}_0$ rather than any prediction, which makes it the exact posterior mean instead of an
+estimate. I reuse the same $\bar{\alpha}_{-1}=1$ convention as in the sampler so that training and
+sampling agree at $t=0$; a mismatch there would mean the network is trained against a target that
+the reverse process never actually uses.
 
 \subsection{Trajectory figures and three beta schedulers}
 

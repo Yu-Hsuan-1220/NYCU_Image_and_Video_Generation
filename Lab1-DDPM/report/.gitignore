@@ -1,0 +1,22 @@
+# Ignore everything in this folder, then whitelist the sources and the built PDF.
+# This way any new LaTeX auxiliary extension is ignored without updating this file.
+*
+
+# Descend into subfolders so figures/ can be tracked.
+!*/
+
+!.gitignore
+!*.tex
+!*.bib
+!*.pdf
+
+# Figures
+!*.png
+!*.jpg
+!*.jpeg
+
+# minted / latexmk scratch dirs hold nothing worth tracking.
+_minted*/
+build/
+
+assets/
