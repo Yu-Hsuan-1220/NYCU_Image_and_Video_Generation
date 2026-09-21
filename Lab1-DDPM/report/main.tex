@@ -562,19 +562,19 @@ only at $t \approx 935$, so the corruption is spread far more evenly across the 
 \centering
 \begin{subfigure}[b]{\linewidth}
     \centering
-    \includegraphics[width=\linewidth]{assets/task2/denoise_traj/linear_noise_99800.png}
+    \includegraphics[width=\linewidth]{assets/task2/sample_preview/denoise_traj/linear_noise_99800.png}
     \caption{linear}
 \end{subfigure}
 \\[4pt]
 \begin{subfigure}[b]{\linewidth}
     \centering
-    \includegraphics[width=\linewidth]{assets/task2/denoise_traj/quad_noise_99800.png}
+    \includegraphics[width=\linewidth]{assets/task2/sample_preview/denoise_traj/quad_noise_99800.png}
     \caption{quad}
 \end{subfigure}
 \\[4pt]
 \begin{subfigure}[b]{\linewidth}
     \centering
-    \includegraphics[width=\linewidth]{assets/task2/denoise_traj/cosine_noise_99800.png}
+    \includegraphics[width=\linewidth]{assets/task2/sample_preview/denoise_traj/cosine_noise_99800.png}
     \caption{cosine}
 \end{subfigure}
 \caption{Denoising trajectories, 10 evenly spaced frames from $t=1000$ (left) to $t=0$ (right).
@@ -625,7 +625,163 @@ the data.
 
 \subsection{Result of different Predictors and discuss}
 
-\subsection{Training and FID score}
+Here the beta scheduler is fixed to \textbf{linear} and only the prediction target changes. All
+three runs use the same network, the same 100k iterations, and the same sampler.
+
+\subsubsection{Generated samples}
+
+\newcommand{\predrow}[1]{%
+    \includegraphics[width=0.121\linewidth]{assets/task2/sample_preview/#1/0.png}\hfill
+    \includegraphics[width=0.121\linewidth]{assets/task2/sample_preview/#1/1.png}\hfill
+    \includegraphics[width=0.121\linewidth]{assets/task2/sample_preview/#1/2.png}\hfill
+    \includegraphics[width=0.121\linewidth]{assets/task2/sample_preview/#1/3.png}\hfill
+    \includegraphics[width=0.121\linewidth]{assets/task2/sample_preview/#1/4.png}\hfill
+    \includegraphics[width=0.121\linewidth]{assets/task2/sample_preview/#1/5.png}\hfill
+    \includegraphics[width=0.121\linewidth]{assets/task2/sample_preview/#1/6.png}\hfill
+    \includegraphics[width=0.121\linewidth]{assets/task2/sample_preview/#1/7.png}%
+}
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}[b]{\linewidth}
+    \centering
+    \predrow{linear_noise}
+    \caption{\textbf{noise} predictor --- sharp, detailed, varied.}
+\end{subfigure}
+\\[6pt]
+\begin{subfigure}[b]{\linewidth}
+    \centering
+    \predrow{linear_x0}
+    \caption{\textbf{x0} predictor --- recognisable but blurry and washed out.}
+\end{subfigure}
+\\[6pt]
+\begin{subfigure}[b]{\linewidth}
+    \centering
+    \predrow{linear_mean}
+    \caption{\textbf{mean} predictor --- complete failure, no structure at all.}
+\end{subfigure}
+\caption{Eight samples from each predictor (linear schedule, 100k iterations).}
+\label{fig:predictor_samples}
+\end{figure}
+
+\autoref{fig:predictor_samples} shows three clearly different outcomes. The \textbf{noise} predictor
+produces sharp faces with fur texture, specular highlights in the eyes and varied backgrounds. The
+\textbf{x0} predictor still produces recognisable animal faces, but they are visibly smoothed:
+fine texture is gone, edges are soft and the backgrounds are flat. The \textbf{mean} predictor fails
+outright --- the samples are coloured noise with no facial structure whatsoever.
+
+\subsubsection{Loss curves}
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}[b]{0.32\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{assets/task2/loss_curve/linear_noise_loss.png}
+    \caption{noise}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.32\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{assets/task2/loss_curve/linear_x0_loss.png}
+    \caption{x0}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.32\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{assets/task2/loss_curve/linear_mean_loss.png}
+    \caption{mean}
+\end{subfigure}
+\caption{Training loss for the three predictors. Note the different $y$-axis scales.}
+\label{fig:predictor_loss}
+\end{figure}
+
+The absolute loss values are \emph{not} comparable across predictors, since each one regresses onto
+a different quantity ($\boldsymbol{\epsilon}$ has unit variance, $\mathbf{x}_0$ lies in $[-1,1]$,
+and $\tilde{\boldsymbol{\mu}}_t$ has a scale that varies with $t$). What is informative is the
+\emph{shape} of each curve.
+
+The noise and x0 curves both behave normally: a fast initial drop followed by a stable noisy
+plateau. The mean curve is the striking one --- it collapses to essentially \textbf{zero} within the
+first few hundred iterations and stays there, interrupted only by occasional spikes. A loss that
+reaches zero while the samples are pure noise is a strong signal that the regression target itself
+is degenerate.
+
+\subsubsection{Why the mean predictor fails}
+
+The explanation is visible directly in \autoref{eq:posterior}. Evaluating the two coefficients of
+$\tilde{\boldsymbol{\mu}}_t$ for the linear schedule gives:
+
+\begin{table}[H]
+\centering
+\caption{Coefficients of $\mathbf{x}_0$ and $\mathbf{x}_t$ in the posterior mean (linear schedule).}
+\label{tab:mean_coef}
+\begin{tabular}{lcccccc}
+\toprule
+$t$ & 1 & 5 & 50 & 200 & 500 & 999 \\
+\midrule
+coefficient of $\mathbf{x}_0$ & 0.545 & 0.222 & 0.036 & 0.010 & 0.003 & 0.000 \\
+coefficient of $\mathbf{x}_t$ & 0.455 & 0.778 & 0.964 & 0.990 & 0.994 & 0.990 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+For all but the very smallest timesteps, the posterior mean is over $96\%$ made of $\mathbf{x}_t$
+--- that is, $\tilde{\boldsymbol{\mu}}_t \approx \mathbf{x}_t$, and the network's regression target
+is almost identical to its own input. The network can therefore drive the MSE to nearly zero by
+learning the \textbf{identity map}, without ever learning anything about the data. That is exactly
+what the loss curve shows.
+
+The consequence at sampling time is fatal: an identity map returns $\mathbf{x}_T$ essentially
+unchanged through all 1000 reverse steps, which is why the samples in
+\autoref{fig:predictor_samples} are still noise. The tiny residual between
+$\tilde{\boldsymbol{\mu}}_t$ and $\mathbf{x}_t$ is precisely the part that performs the denoising,
+but under an unweighted MSE it is numerically negligible and the optimiser has no incentive to
+model it. The occasional spikes come from the rare batches containing very small $t$, where the
+coefficient on $\mathbf{x}_0$ jumps sharply and the target finally differs from the input.
+
+\subsubsection{Why the x0 predictor is blurry}
+
+The x0 predictor does not have this degeneracy --- its target is genuinely different from its input
+--- but it suffers from a different problem. At large $t$ the network is asked to recover a clean
+image from what is almost pure noise. Many different images are compatible with the same
+$\mathbf{x}_t$, and the MSE-optimal answer is the \emph{average} of all of them, which is a blurry,
+low-frequency image. Those blurry estimates are then fed into the posterior mean at every reverse
+step, so the smoothing persists all the way to $\mathbf{x}_0$.
+
+The noise parameterization avoids this because the network only has to identify the direction of
+the corruption rather than reconstruct the full image, and each reverse step applies a small
+correction instead of committing to a complete estimate.
+
+\subsubsection{FID comparison}
+
+\begin{table}[H]
+\centering
+\caption{FID of the three predictors (linear schedule, 100k iterations).}
+\label{tab:fid_predictor}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Predictor} & \textbf{FID} & \textbf{Visual quality} \\
+\midrule
+noise & \textbf{8.29} & sharp and varied \\
+x0    & 31.05 & recognisable but blurry \\
+mean  & 82.38 & unusable \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The FID scores line up exactly with the visual impression and with the loss-curve analysis. Only the
+noise predictor meets the target of $\text{FID} < 15$; the x0 predictor is roughly four times worse,
+and the mean predictor an order of magnitude worse. This reproduces the finding of the original DDPM
+paper, which adopted the $\boldsymbol{\epsilon}$ parameterization for precisely this reason.
+
+\subsection{Screenshot the best FID of your training result}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{assets/task2/best_fid.png}
+\caption{Best FID of $8.286$, obtained with the linear beta schedule and the noise predictor.}
+\label{fig:best_fid}
+\end{figure}
 
 % \begin{code}
 % \captionof{listing}{\textbf{Actor Network Implementation}}
