@@ -277,7 +277,54 @@ network would be regressing towards an unrelated sample and the training signal 
 
 \subsection{q\_sample implementation}
 
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{assets/task1/q_sample.png}
+\caption{Forward process $q(\mathbf{x}_t \mid \mathbf{x}_0)$ visualized every 50 timesteps. The
+Swiss Roll structure is progressively destroyed until the samples are indistinguishable from an
+isotropic Gaussian.}
+\label{fig:q_sample}
+\end{figure}
+
+\autoref{fig:q_sample} confirms that \texttt{q\_sample} behaves as expected. At $t=0$ the samples
+trace the clean spiral; by $t=50$ the curve has thickened but both arms are still clearly separable;
+around $t \approx 150$--$200$ the spiral has broken up into a diffuse ring; and from
+$t \approx 300$ onwards the points form a centred isotropic blob with no visible structure left.
+
 \subsection{Loss curve and output distribution}
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{assets/task1/loss.png}
+    \caption{Training loss over 5000 iterations.}
+    \label{fig:task1_loss}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.48\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{assets/task1/output.png}
+    \caption{Generated samples vs.\ target distribution.}
+    \label{fig:task1_output}
+\end{subfigure}
+\caption{Training curve and sampling result of the 2D Swiss Roll DDPM.}
+\label{fig:task1_result}
+\end{figure}
+
+\textbf{Loss curve.} The loss drops sharply from about $1.2$ to roughly $0.4$ within the first few
+hundred iterations, then oscillates around $0.3$ for the rest of training. The wide band of
+fluctuation is expected rather than a sign of underfitting: each iteration samples a
+\emph{different} random $t$, and at large $t$ the input is almost pure noise, so
+$\boldsymbol{\epsilon}$ is largely unpredictable from $\mathbf{x}_t$ alone. This irreducible
+component puts a floor on the loss and keeps the per-iteration variance high however well the model
+is trained.
+
+\textbf{Output distribution.} The model recovers the spiral faithfully: both the outer sweep and the
+tightly wound inner arm are covered, the two arms stay separated where they run close together, and
+there is no mode collapse. The main defect is a thin scatter of points lying slightly off the
+manifold, mostly along the outer arm and near the inner tip. This matches the loss analysis above
+--- the residual error at large $t$ means the early reverse steps place points only approximately.
 
 
 \section{Task 2 - Image Generation}
