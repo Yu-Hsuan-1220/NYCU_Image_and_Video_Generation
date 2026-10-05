@@ -18,5 +18,3 @@
 # minted / latexmk scratch dirs hold nothing worth tracking.
 _minted*/
 build/
-
-assets/
