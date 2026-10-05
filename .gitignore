@@ -21,3 +21,4 @@ build/
 *.png
 
 settings.json
+!Lab2-DDIM-LoRA/assets/images/*.png
