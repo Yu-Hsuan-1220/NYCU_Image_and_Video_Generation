@@ -24,3 +24,4 @@ settings.json
 !Lab2-DDIM-LoRA/assets/images/*.png
 *.zip
 Lab2-DDIM-LoRA/task1/image_diffusion_todo/data
+Lab2-DDIM-LoRA/task2/runs/

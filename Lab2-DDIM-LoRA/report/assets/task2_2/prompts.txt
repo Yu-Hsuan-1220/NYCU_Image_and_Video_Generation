@@ -1,0 +1,8 @@
+steps=30, guidance=7.5, seed=10 unless noted
+row1=base SD v1.4, row2=+DreamBooth LoRA
+0: A photo of sks cat in a bucket
+1: a photo of sks cat on the beach
+2: a photo of sks cat sleeping on a sofa
+3: a photo of sks cat in front of the Eiffel Tower
+4: an oil painting of sks cat
+5: an anime drawing of sks cat

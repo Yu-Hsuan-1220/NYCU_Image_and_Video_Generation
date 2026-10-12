@@ -6,8 +6,8 @@
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export INSTANCE_DIR="./sample_data/dreambooth-cat"
 export OUTPUT_DIR="./runs/dreambooth_cat"
-INSTANCE_PROMPT="a photo of a sks cat"
-MIXED_PRECISION="no"
+INSTANCE_PROMPT="a photo of sks cat"
+MIXED_PRECISION="fp16"
 RESOLUTION=512
 TRAIN_BATCH_SIZE=1
 GRADIENT_ACCUMULATION_STEPS=1

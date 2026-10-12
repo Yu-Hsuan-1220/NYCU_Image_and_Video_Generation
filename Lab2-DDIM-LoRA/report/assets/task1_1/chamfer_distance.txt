@@ -1,0 +1,2 @@
+DDPM Chamfer Distance: 9.4095
+DDIM Chamfer Distance: 39.7837

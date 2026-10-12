@@ -1,0 +1,8 @@
+seed=10, steps=30, guidance=7.5
+row1=base SD v1.4, row2=+Naruto LoRA
+0: a cute bear
+1: a man with sunglasses
+2: a cute cat
+3: a girl in a forest
+4: an old man with a white beard
+5: a castle on a hill

@@ -1,0 +1,6 @@
+0.png: a man with dark hair and brown eyes
+100.png: a man with a bald hair and a bald face
+300.png: a woman standing in front of a mountain
+600.png: an older man in a brown robe and a brown robe
+900.png: a person with blonde hair and green eyes
+1200.png: a man with white hair and red eyes
