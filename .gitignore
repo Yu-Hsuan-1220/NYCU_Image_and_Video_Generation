@@ -25,3 +25,4 @@ settings.json
 *.zip
 Lab2-DDIM-LoRA/task1/image_diffusion_todo/data
 Lab2-DDIM-LoRA/task2/runs/
+*.safetensors
