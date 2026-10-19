@@ -1,0 +1,55 @@
+\section{Experiments \& Results}
+\label{sec:exp}
+% [6 pts]  Quantitative results (CLIP score) + qualitative results (output images).
+% [6 pts]  Ablation: (1) SDS guidance_scale; (2) SDI inversion_n_steps; (3) SDI sdi_update_interval.
+% [2 pts]  All hyperparameters for each task.
+%
+% Images: copy outputs/{sds,vsd,sdi}/*.png to Figure/{sds,vsd,sdi}/.
+% A missing image is drawn as a framed placeholder box showing its expected path.
+
+\input{Figure/figure_page}  % Figs. 2-6 together on one figure page
+
+%-------------------------------------------------------------------------
+\subsection{Quantitative Results}
+\label{sec:quantitative}
+
+\input{Table/1_clip}
+
+\TODO{Which method has the best average CLIP score (\cref{tab:clip})? Are there prompts where the ranking changes, and why might that be? Does the score agree with your visual impression?}
+
+%-------------------------------------------------------------------------
+\subsection{Qualitative Results}
+\label{sec:qualitative}
+
+\TODO{Compare the methods visually and point to concrete examples in \cref{fig:qualitative}. What are the typical strengths and failure cases of each method?}
+
+%-------------------------------------------------------------------------
+\subsection{Ablation Study}
+\label{sec:ablation}
+
+\input{Table/2_ablation}
+
+\TODO{Briefly describe the setup: which prompts and values were tested; all other hyperparameters follow \cref{tab:hparams}. \Cref{tab:ablation} lists the CLIP scores of all three ablations.}
+
+\subsubsection{SDS: \texttt{guidance\_scale}}
+\label{sec:abl_sds_gs}
+
+\TODO{How do the results change as the guidance scale increases (\cref{fig:abl_sds_gs}, \cref{tab:ablation}(a)), and why? Which value works best, and how does it compare with the guidance scale typically used for ordinary sampling?}
+
+\subsubsection{SDI: \texttt{inversion\_n\_steps}}
+\label{sec:abl_sdi_steps}
+
+\TODO{How do the results and the runtime change with the number of inversion steps (\cref{fig:abl_sdi_steps}, \cref{tab:ablation}(b)), and why? Is there a trade-off?}
+
+\subsubsection{SDI: \texttt{sdi\_update\_interval}}
+\label{sec:abl_sdi_interval}
+
+\TODO{How do the results change with the update interval (\cref{fig:abl_sdi_interval}, \cref{tab:ablation}(c)), and why? What happens at the two extremes?}
+
+%-------------------------------------------------------------------------
+\subsection{Hyperparameters}
+\label{sec:hparams}
+
+\input{Table/3_hparams}
+
+\TODO{Fill in \cref{tab:hparams} with the settings you actually used (defaults are pre-filled from \texttt{main.py} / README) and justify any value you changed.}

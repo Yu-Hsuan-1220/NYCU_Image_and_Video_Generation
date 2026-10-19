@@ -1,0 +1,76 @@
+\section{Methodology}
+\label{sec:method}
+% [6 pts] Explain SDS, VSD, and SDI; both the concept and your implementation.
+
+\TODO{Introduce the background and notation shared by the three methods (\eg the pretrained diffusion model~\cite{rombach2022ldm}, the forward noising process~\cite{ho2020ddpm}, classifier-free guidance~\cite{ho2022cfg}), so the following subsections can refer to them.}
+
+%-------------------------------------------------------------------------
+\subsection{Score Distillation Sampling (SDS)}
+\label{sec:sds}
+
+\noindent\textbf{Concept.}
+\TODO{In your own words: what is being optimized in SDS~\cite{poole2023dreamfusion}, where does the gradient come from, and why is it a reasonable objective? Point out the approximation that makes SDS practical.}
+
+\noindent\textbf{Implementation.}
+\TODO{Paste your \texttt{get\_sds\_loss()} into the code block below, then walk through it: the main steps, the design choices you made and why, and anything that was tricky to get right.}
+
+\begin{lstlisting}
+def get_sds_loss(
+    self, latents, text_embeddings,
+    guidance_scale=7.5,
+):
+    # Paste your implementation here
+    ...
+\end{lstlisting}
+
+%-------------------------------------------------------------------------
+\subsection{Variational Score Distillation (VSD)}
+\label{sec:vsd}
+
+\noindent\textbf{Concept.}
+\TODO{Which weakness of SDS does VSD~\cite{wang2023prolificdreamer} try to fix? What extra component does it introduce (\cf LoRA~\cite{hu2022lora}), and what is that component trained to do?}
+
+\noindent\textbf{Implementation.}
+\TODO{Paste your \texttt{get\_vsd\_loss()} into the code block below, then walk through it: how the extra component is set up and updated, how its loss and the distillation loss interact, and which parts receive gradients.}
+
+\begin{lstlisting}
+def get_vsd_loss(
+    self, latents, text_embeddings,
+    guidance_scale=7.5, lora_loss_weight=1.0,
+):
+    # Paste your implementation here
+    ...
+\end{lstlisting}
+
+%-------------------------------------------------------------------------
+\subsection{Score Distillation via Inversion (SDI)}
+\label{sec:sdi}
+
+\noindent\textbf{Concept.}
+\TODO{Which weakness of SDS does SDI~\cite{lukoianov2024sdi} try to fix? How does it obtain the noisy sample differently (\cf DDIM~\cite{song2021ddim}), and how does its timestep schedule differ from SDS?}
+
+\noindent\textbf{Implementation.}
+\TODO{Paste your \texttt{invert\_noise()} (DDIM inversion) and \texttt{get\_sdi\_loss()} into the two code blocks below, then walk through them: how your inversion loop works, how the timestep changes over the iterations, and how and when the target is updated.}
+
+\begin{lstlisting}
+@torch.no_grad()
+def invert_noise(
+    self, latents, target_t, text_embeddings,
+    guidance_scale=-7.5, n_steps=10, eta=0.3,
+):
+    # Paste your DDIM inversion here
+    ...
+\end{lstlisting}
+
+\begin{lstlisting}
+def get_sdi_loss(
+    self, latents, text_embeddings,
+    guidance_scale=7.5,
+    current_iter=0, total_iters=500,
+    inversion_guidance_scale=-7.5,
+    inversion_n_steps=10, inversion_eta=0.3,
+    update_interval=25,
+):
+    # Paste your implementation here
+    ...
+\end{lstlisting}

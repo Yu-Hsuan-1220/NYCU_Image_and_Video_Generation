@@ -26,3 +26,5 @@ settings.json
 Lab2-DDIM-LoRA/task1/image_diffusion_todo/data
 Lab2-DDIM-LoRA/task2/runs/
 *.safetensors
+!Lab3-Distillation/asset/*.png
+!Lab3-Distillation/template/**/*.png
