@@ -114,8 +114,25 @@ class StableDiffusion(nn.Module):
         Returns:
             loss: Scalar SDS loss
         """
-        # TODO: Implement SDS loss
-        raise NotImplementedError("TODO: Implement SDS loss")
+        B = latents.shape[0]
+
+        # Sample a random timestep t ~ U[min_step, max_step] and noise eps ~ N(0, I)
+        t = torch.randint(self.min_step, self.max_step + 1, (B,), dtype=torch.long, device=self.device)
+        noise = torch.randn_like(latents)
+
+        with torch.no_grad():
+            # Forward diffusion: x_t = sqrt(alpha_bar_t) * x_0 + sqrt(1 - alpha_bar_t) * eps
+            latents_noisy = self.scheduler.add_noise(latents, noise, t)
+            noise_pred = self.get_noise_preds(latents_noisy, t, text_embeddings, guidance_scale)
+
+        # SDS gradient with DreamFusion weighting w(t) = 1 - alpha_bar_t
+        w = (1 - self.alphas[t]).view(B, 1, 1, 1)
+        grad = torch.nan_to_num(w * (noise_pred - noise))
+
+        # Reparameterize so that d(loss)/d(latents) == grad (skips the UNet Jacobian)
+        target = (latents - grad).detach()
+        loss = 0.5 * F.mse_loss(latents, target, reduction="sum") / B
+        return loss
 
     def get_vsd_loss(self, latents, text_embeddings, guidance_scale=7.5, lora_loss_weight=1.0):
         """
@@ -133,8 +150,41 @@ class StableDiffusion(nn.Module):
         Returns:
             loss: Scalar VSD loss + lora_loss_weight * LoRA loss
         """
-        # TODO: Implement VSD loss
-        raise NotImplementedError("TODO: Implement VSD loss")
+        B = latents.shape[0]
+        cond_embeddings = text_embeddings.chunk(2)[1]
+
+        # Sample a random timestep t ~ U[min_step, max_step] and noise eps ~ N(0, I)
+        t = torch.randint(self.min_step, self.max_step + 1, (B,), dtype=torch.long, device=self.device)
+        noise = torch.randn_like(latents)
+
+        with torch.no_grad():
+            latents_noisy = self.scheduler.add_noise(latents, noise, t)
+
+            # eps_theta: pretrained UNet (LoRA disabled) with CFG
+            self.unet.disable_adapters()
+            noise_pred_pretrain = self.get_noise_preds(latents_noisy, t, text_embeddings, guidance_scale)
+            self.unet.enable_adapters()
+
+            # eps_phi: LoRA UNet, conditional only (CFG scale 1)
+            noise_pred_lora = self.unet(latents_noisy, t, encoder_hidden_states=cond_embeddings).sample
+
+        # VSD gradient with weighting w(t) = 1 - alpha_bar_t
+        w = (1 - self.alphas[t]).view(B, 1, 1, 1)
+        grad = torch.nan_to_num(w * (noise_pred_pretrain - noise_pred_lora))
+
+        # Reparameterize so that d(loss_vsd)/d(latents) == grad
+        target = (latents - grad).detach()
+        loss_vsd = 0.5 * F.mse_loss(latents, target, reduction="sum") / B
+
+        # LoRA loss: standard denoising loss on the (detached) current latents,
+        # so eps_phi learns the distribution of the images being generated
+        t_lora = torch.randint(self.min_step, self.max_step + 1, (B,), dtype=torch.long, device=self.device)
+        noise_lora = torch.randn_like(latents)
+        latents_noisy_lora = self.scheduler.add_noise(latents.detach(), noise_lora, t_lora)
+        noise_pred_train = self.unet(latents_noisy_lora, t_lora, encoder_hidden_states=cond_embeddings).sample
+        loss_lora = F.mse_loss(noise_pred_train.float(), noise_lora.float(), reduction="mean")
+
+        return loss_vsd + lora_loss_weight * loss_lora
 
     @torch.no_grad()
     def invert_noise(self, latents, target_t, text_embeddings, guidance_scale=-7.5, n_steps=10, eta=0.3):
@@ -156,10 +206,23 @@ class StableDiffusion(nn.Module):
         Returns:
             latents_noisy: Inverted noisy latents x_t (B, 4, H, W)
         """
-        # TODO: Implement DDIM inversion
-        # Hint: You may assume eta=0 (deterministic inversion) and ignore `eta`;
-        # no points will be deducted for this.
-        raise NotImplementedError("TODO: Implement DDIM inversion")
+        # Deterministic DDIM inversion (eta = 0): walk from t=0 up to target_t in n_steps
+        B = latents.shape[0]
+        target = int(target_t.max().item()) if torch.is_tensor(target_t) else int(target_t)
+        timesteps = torch.linspace(0, target, n_steps + 1, device=self.device).round().long()
+
+        latents_noisy = latents.clone()
+        for t_cur, t_next in zip(timesteps[:-1], timesteps[1:]):
+            alpha_cur = self.alphas[t_cur]
+            alpha_next = self.alphas[t_next]
+
+            noise_pred = self.get_noise_preds(latents_noisy, t_cur.expand(B), text_embeddings, guidance_scale)
+
+            # x_{t_next} = sqrt(a_next) * x0_pred + sqrt(1 - a_next) * eps
+            pred_x0 = (latents_noisy - (1 - alpha_cur).sqrt() * noise_pred) / alpha_cur.sqrt()
+            latents_noisy = alpha_next.sqrt() * pred_x0 + (1 - alpha_next).sqrt() * noise_pred
+
+        return latents_noisy
 
     def get_sdi_loss(
         self,
@@ -194,8 +257,10 @@ class StableDiffusion(nn.Module):
         """
         B = latents.shape[0]
 
-        # TODO: Compute the annealed timestep for the current iteration
-        t = None
+        # Linearly anneal t from max_step down to min_step over the optimization
+        progress = current_iter / max(1, total_iters)
+        t_val = int(round(self.max_step - (self.max_step - self.min_step) * progress))
+        t = torch.full((B,), t_val, dtype=torch.long, device=self.device)
 
         # Check if we need to update target
         should_update = (current_iter % update_interval == 0) or not hasattr(self, 'sdi_target')
@@ -210,17 +275,19 @@ class StableDiffusion(nn.Module):
                     eta=inversion_eta
                 )
 
-                # TODO: Predict noise from the inverted noisy latents
-                noise_pred = None
+                # Predict noise from the inverted noisy latents (with CFG)
+                noise_pred = self.get_noise_preds(latents_noisy, t, text_embeddings, guidance_scale)
 
-                # TODO: Denoise to get the target x0 from the predicted noise
-                target = None
+                # One-step denoise: x0 = (x_t - sqrt(1 - a_t) * eps) / sqrt(a_t)
+                alpha_t = self.alphas[t].view(B, 1, 1, 1)
+                target = (latents_noisy - (1 - alpha_t).sqrt() * noise_pred) / alpha_t.sqrt()
+                target = torch.nan_to_num(target)
 
                 # Cache the target
                 self.sdi_target = target.detach()
 
-        # TODO: Compute the MSE loss between current latents and the cached target
-        loss = None
+        # MSE between current latents and the cached target
+        loss = 0.5 * F.mse_loss(latents, self.sdi_target, reduction="sum") / B
 
         return loss
         
