@@ -1,0 +1,24 @@
+\begin{table}[t]
+  \centering
+  \footnotesize
+  \setlength{\tabcolsep}{4pt}
+  \caption{\textbf{Ablation study.} Average CLIP score ($\uparrow$) over the 10 prompts. Time: average optimization time per prompt on one RTX 4090.}
+  \label{tab:ablation}
+  \begin{tabular}{@{}lccccc@{}}
+    \toprule
+    \multicolumn{6}{@{}l}{\textit{(a) SDS: \texttt{guidance\_scale}}} \\
+    Value & 7.5 & 15 & 25 & 50 & 100 \\
+    CLIP  & 0.2547 & 0.2837 & 0.3071 & \textbf{0.3076} & 0.3015 \\
+    \midrule
+    \multicolumn{6}{@{}l}{\textit{(b) SDI: \texttt{inversion\_n\_steps}}} \\
+    Value & 1 & 3 & 5 & 10 & 25 \\
+    CLIP  & 0.2030 & 0.3020 & 0.3018 & 0.3010 & \textbf{0.3054} \\
+    Time (s) & 13.4 & 21.2 & 26.2 & 43.7 & 93.3 \\
+    \midrule
+    \multicolumn{6}{@{}l}{\textit{(c) SDI: \texttt{sdi\_update\_interval}}} \\
+    Value & 25 & 75 & 200 & 500 & 1000 \\
+    CLIP  & \textbf{0.3010} & 0.2963 & 0.2960 & 0.2942 & 0.2226 \\
+    Time (s) & 43.7 & 16.8 & 8.2 & 6.4 & 5.4 \\
+    \bottomrule
+  \end{tabular}
+\end{table}

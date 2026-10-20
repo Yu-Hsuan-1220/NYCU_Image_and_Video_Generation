@@ -1,0 +1,25 @@
+\begin{table}[t]
+  \centering
+  \footnotesize
+  \caption{\textbf{CLIP score} ($\uparrow$, ViT-B/32) per prompt. Best per row in bold.}
+  \label{tab:clip}
+  % values: outputs/{sds,vsd,sdi}/eval.json
+  \begin{tabular}{@{}lccc@{}}
+    \toprule
+    Prompt & SDS & VSD & SDI \\
+    \midrule
+    A red bus driving on a desert road & \textbf{0.3619} & 0.3221 & 0.3608 \\
+    a boat in a river                  & \textbf{0.3030} & 0.2961 & 0.2922 \\
+    A cabin surrounded by forests      & 0.3017 & \textbf{0.3291} & 0.3210 \\
+    A church beside a lake             & 0.3243 & \textbf{0.3295} & 0.3103 \\
+    A villa close to the pool          & 0.2833 & 0.2885 & \textbf{0.2941} \\
+    A castle next to a river           & 0.2856 & \textbf{0.2996} & 0.2903 \\
+    A burger on the table              & \textbf{0.3035} & 0.2715 & 0.2918 \\
+    A dog sitting on grass             & \textbf{0.2985} & 0.2857 & 0.2651 \\
+    a cat sitting on a table           & \textbf{0.3267} & 0.2837 & 0.3059 \\
+    A car on the road                  & \textbf{0.2827} & 0.2763 & 0.2791 \\
+    \midrule
+    \textbf{Average}                   & \textbf{0.3071} & 0.2982 & 0.3010 \\
+    \bottomrule
+  \end{tabular}
+\end{table}

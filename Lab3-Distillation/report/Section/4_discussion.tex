@@ -1,0 +1,24 @@
+\section{Discussion}
+\label{sec:discussion}
+
+%-------------------------------------------------------------------------
+\subsection{Why the Original Diffusion Loss Fails}
+\label{sec:diff_loss}
+% [3 pts] Intuitively explain why L_Diff = ||eps_hat(x_t, y, t) - eps_t||^2 did not produce
+% realistic samples (use < 1 math equation) & provide visual results of applying L_Diff.
+
+\TODO{Explain how you produced the result in \cref{fig:diff_loss}. Then explain intuitively (at most one equation) why directly optimizing the diffusion loss does not give realistic images, and connect your explanation to what is visible in the figure.}
+
+%-------------------------------------------------------------------------
+\subsection{Why SDI and VSD Outperform SDS}
+\label{sec:why_better}
+% [3 pts] Intuitively analyze why SDI and VSD perform better than SDS (without heavy math).
+
+\noindent\textbf{SDS.}
+\TODO{What are the typical artifacts of SDS in your results, and what in the SDS update causes them?}
+
+\noindent\textbf{VSD.}
+\TODO{What does VSD change compared with SDS, and why does that lead to better results? Explain intuitively, without heavy math, and support it with your own figures or numbers.}
+
+\noindent\textbf{SDI.}
+\TODO{What does SDI change compared with SDS, and why does that lead to better results? Explain intuitively, without heavy math, and support it with your own figures or numbers.}
