@@ -7,7 +7,14 @@
 % [3 pts] Intuitively explain why L_Diff = ||eps_hat(x_t, y, t) - eps_t||^2 did not produce
 % realistic samples (use < 1 math equation) & provide visual results of applying L_Diff.
 
-\TODO{Explain how you produced the result in \cref{fig:diff_loss}. Then explain intuitively (at most one equation) why directly optimizing the diffusion loss does not give realistic images, and connect your explanation to what is visible in the figure.}
+To produce \cref{fig:diff_loss}, I used the same setup as SDS (CFG 25, lr 0.01, 500 steps) but minimized $\mathcal L_{\text{Diff}} = \|\hat\epsilon_\theta(x_t, y, t) - \epsilon\|^2$ directly, backpropagating through the UNet (separate script \texttt{scripts/diff\_loss.py}).
+The results contain no recognizable object, only colorful high-frequency noise, while SDS with the same settings produces the expected content.
+
+The difference is only one term.
+The full gradient is $(\hat\epsilon_\theta - \epsilon)\,\frac{\partial \hat\epsilon_\theta}{\partial x_t}\,\frac{\partial x_t}{\partial x_0}$, and SDS simply drops the UNet Jacobian in the middle.
+Intuitively, the diffusion loss does not ask the image to look real; it asks the UNet to predict the noise well.
+Through the Jacobian, the optimizer finds that tiny high-frequency changes to the input are the fastest way to reduce the UNet's error, much like an adversarial attack, so the latent drifts towards patterns that are meaningless to humans.
+Without the Jacobian, the residual $\hat\epsilon_\theta - \epsilon$ itself points towards a cleaner, prompt-consistent image, which is why SDS works.
 
 %-------------------------------------------------------------------------
 \subsection{Why SDI and VSD Outperform SDS}
@@ -15,10 +22,20 @@
 % [3 pts] Intuitively analyze why SDI and VSD perform better than SDS (without heavy math).
 
 \noindent\textbf{SDS.}
-\TODO{What are the typical artifacts of SDS in your results, and what in the SDS update causes them?}
+The typical SDS artifacts in my results are blur, missing detail, and washed-out colors at normal guidance, and over-saturation at very high guidance (\cref{fig:qualitative,fig:abl_sds_gs}).
+The cause is the random noise: every step uses a new $\epsilon$ and $t$, so each step pushes the image in a slightly different direction, and over many steps these directions average out into a smooth ``average'' image.
+A large guidance scale is needed to keep a strong enough signal, but it also exaggerates colors.
 
 \noindent\textbf{VSD.}
-\TODO{What does VSD change compared with SDS, and why does that lead to better results? Explain intuitively, without heavy math, and support it with your own figures or numbers.}
+VSD replaces the random noise with a learned prediction of the current images.
+The random part that SDS suffers from is now present on both sides of the difference and largely cancels, leaving a cleaner direction from ``what I generate now'' towards ``what the pretrained model expects''.
+This is why VSD works with a normal guidance of 7.5 and gives much sharper details than SDS in \cref{fig:qualitative}.
+In my runs it also introduced over-saturated textures, which lowered its CLIP score; I believe a better-tuned LoRA (\eg learning rate) would reduce them.
 
 \noindent\textbf{SDI.}
-\TODO{What does SDI change compared with SDS, and why does that lead to better results? Explain intuitively, without heavy math, and support it with your own figures or numbers.}
+SDI keeps the SDS update but chooses the noise by DDIM inversion instead of at random.
+Because the noise is consistent with the current image, the target from one-step denoising is a sharper version of that image instead of a blurry average, and the latent converges smoothly towards it; the large-to-small timestep schedule further separates layout from detail.
+This gives the cleanest images in \cref{fig:qualitative} at guidance 7.5.
+The inversion ablation supports this: with a poor inversion (1 step) SDI collapses, while any reasonably accurate inversion gives good results.
+
+Although SDS has the highest average CLIP score in my runs, the differences are small, and visually both VSD and SDI are clearly sharper and more detailed, which CLIP ViT-B/32 does not fully reflect.

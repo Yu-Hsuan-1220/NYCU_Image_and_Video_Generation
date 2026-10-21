@@ -2,8 +2,15 @@
 \label{sec:intro}
 % [2 pts] Briefly describe and summarize the goal of this assignment.
 
-\TODO{What problem does score distillation address, and how is it different from ordinary diffusion sampling? Keep it to a few sentences; you may refer to \cref{fig:teaser}.}
+Ordinary diffusion sampling starts from pure noise and runs the reverse process step by step to produce an image.
+Score distillation instead treats the image (here, a Stable Diffusion latent) as a set of free parameters and uses a frozen, pretrained diffusion model only as a \emph{critic}: at every iteration the model looks at a noisy version of the current latent and tells us in which direction it should move to look more like the text prompt.
+This turns a diffusion model into a loss function, which is what makes text-to-3D methods such as DreamFusion~\cite{poole2023dreamfusion} possible (\cref{fig:teaser}).
 
-\TODO{State the goal of this assignment: which methods you implemented, what you generated, and how you evaluated the results.}
+In this assignment I implemented three score distillation methods on top of Stable Diffusion 2.1-base for text-to-image generation:
+Score Distillation Sampling (SDS)~\cite{poole2023dreamfusion},
+Variational Score Distillation (VSD)~\cite{wang2023prolificdreamer}, and
+Score Distillation via Inversion (SDI)~\cite{lukoianov2024sdi}.
+Each method optimizes a $1\times4\times64\times64$ latent for the 10 evaluation prompts, and the results are evaluated with the CLIP ViT-B/32 image--text similarity~\cite{radford2021clip}.
+I also ran the required ablations on the SDS guidance scale and on the SDI inversion steps and update interval, and an extra experiment with the original diffusion loss.
 
-\TODO{(Optional) Briefly outline the rest of the report.}
+\Cref{sec:method} describes the methods and my implementation, \cref{sec:exp} reports the results and ablations, and \cref{sec:discussion} discusses why the plain diffusion loss fails and why VSD and SDI improve over SDS.

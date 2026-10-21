@@ -2,25 +2,41 @@
 \label{sec:method}
 % [6 pts] Explain SDS, VSD, and SDI; both the concept and your implementation.
 
-\TODO{Introduce the background and notation shared by the three methods (\eg the pretrained diffusion model~\cite{rombach2022ldm}, the forward noising process~\cite{ho2020ddpm}, classifier-free guidance~\cite{ho2022cfg}), so the following subsections can refer to them.}
+\noindent\textbf{Background.}
+All three methods share the same frozen Stable Diffusion UNet $\epsilon_\theta(x_t, y, t)$~\cite{rombach2022ldm}, which predicts the noise in a noisy latent $x_t$ given a prompt $y$ and timestep $t$.
+The forward process~\cite{ho2020ddpm} produces $x_t = \sqrt{\bar\alpha_t}\,x_0 + \sqrt{1-\bar\alpha_t}\,\epsilon$ with $\epsilon\sim\mathcal N(0, I)$.
+Noise predictions use classifier-free guidance (CFG)~\cite{ho2022cfg}, $\hat\epsilon_\theta = \epsilon_{\text{uncond}} + s\,(\epsilon_{\text{cond}} - \epsilon_{\text{uncond}})$, where the unconditional branch uses the negative prompt ``low quality''.
+The optimized parameter is the latent $x_0$, initialized from $\mathcal N(0, I)$ and decoded with the VAE only for visualization.
+The optimizer (AdamW, cosine schedule, gradient clipping) is the one provided in \texttt{main.py}.
 
 %-------------------------------------------------------------------------
 \subsection{Score Distillation Sampling (SDS)}
 \label{sec:sds}
 
 \noindent\textbf{Concept.}
-\TODO{In your own words: what is being optimized in SDS~\cite{poole2023dreamfusion}, where does the gradient come from, and why is it a reasonable objective? Point out the approximation that makes SDS practical.}
+SDS~\cite{poole2023dreamfusion} noises the current latent with a random $t$ and $\epsilon$, asks the diffusion model to predict the noise, and uses the difference as the update direction:
+$\nabla_{x_0} L_{\text{SDS}} = w(t)\,(\hat\epsilon_\theta(x_t, y, t) - \epsilon)$.
+Intuitively, the residual $\hat\epsilon_\theta - \epsilon$ points from the current image towards what the model thinks a clean image for this prompt looks like.
+This is the gradient of the ordinary diffusion loss with the UNet Jacobian term dropped; skipping it makes SDS cheap (no backpropagation through the UNet) and, as \cref{sec:diff_loss} shows, is also what makes it work at all.
 
 \noindent\textbf{Implementation.}
-\TODO{Paste your \texttt{get\_sds\_loss()} into the code block below, then walk through it: the main steps, the design choices you made and why, and anything that was tricky to get right.}
+I sample $t\sim\mathcal U[20, 980]$ and $\epsilon$, add noise with the scheduler, and predict the noise with CFG under \texttt{no\_grad}.
+The gradient uses the DreamFusion weight $w(t)=1-\bar\alpha_t$.
+To feed this hand-made gradient to the optimizer, I write it as an MSE to a detached target $x_0 - \text{grad}$, whose derivative with respect to $x_0$ is exactly the SDS gradient.
 
 \begin{lstlisting}
-def get_sds_loss(
-    self, latents, text_embeddings,
-    guidance_scale=7.5,
-):
-    # Paste your implementation here
-    ...
+def get_sds_loss(self, latents, text_embeddings, guidance_scale=7.5):
+    B = latents.shape[0]
+    t = torch.randint(self.min_step, self.max_step + 1, (B,), device=self.device)
+    noise = torch.randn_like(latents)
+    with torch.no_grad():
+        latents_noisy = self.scheduler.add_noise(latents, noise, t)
+        noise_pred = self.get_noise_preds(latents_noisy, t, text_embeddings, guidance_scale)
+    w = (1 - self.alphas[t]).view(B, 1, 1, 1)
+    grad = torch.nan_to_num(w * (noise_pred - noise))
+    # d(loss)/d(latents) == grad (skips the UNet Jacobian)
+    target = (latents - grad).detach()
+    return 0.5 * F.mse_loss(latents, target, reduction="sum") / B
 \end{lstlisting}
 
 %-------------------------------------------------------------------------
@@ -28,18 +44,41 @@ def get_sds_loss(
 \label{sec:vsd}
 
 \noindent\textbf{Concept.}
-\TODO{Which weakness of SDS does VSD~\cite{wang2023prolificdreamer} try to fix? What extra component does it introduce (\cf LoRA~\cite{hu2022lora}), and what is that component trained to do?}
+In SDS the reference $\epsilon$ is pure random noise, so the update is noisy and SDS needs a very large guidance scale to converge, which causes over-smoothed and over-saturated results.
+VSD~\cite{wang2023prolificdreamer} replaces $\epsilon$ with the prediction of a second network $\epsilon_\phi$, a LoRA~\cite{hu2022lora} on top of the same UNet, which is trained online to model the distribution of the images currently being generated.
+The update $w(t)\,(\hat\epsilon_\theta - \epsilon_\phi)$ then compares ``what the pretrained model expects'' with ``what we currently generate'', which is a much cleaner signal and works with a normal guidance scale of 7.5.
 
 \noindent\textbf{Implementation.}
-\TODO{Paste your \texttt{get\_vsd\_loss()} into the code block below, then walk through it: how the extra component is set up and updated, how its loss and the distillation loss interact, and which parts receive gradients.}
+The LoRA (rank 4 on the attention projections) is set up by the provided code.
+For $\epsilon_\theta$ I temporarily disable the adapters and predict with CFG; for $\epsilon_\phi$ I enable them and use only the conditional branch.
+Both predictions are made without gradients, and the VSD term uses the same detached-target trick as SDS, so it only updates the latent.
+The LoRA is trained with the standard denoising loss on a \emph{detached} copy of the latent with a fresh $t$ and $\epsilon$, so it only updates the LoRA.
+The returned loss is the sum of both terms, and \texttt{main.py} steps the latent and the LoRA parameters together.
 
 \begin{lstlisting}
-def get_vsd_loss(
-    self, latents, text_embeddings,
-    guidance_scale=7.5, lora_loss_weight=1.0,
-):
-    # Paste your implementation here
-    ...
+def get_vsd_loss(self, latents, text_embeddings, guidance_scale=7.5, lora_loss_weight=1.0):
+    B = latents.shape[0]
+    cond = text_embeddings.chunk(2)[1]
+    t = torch.randint(self.min_step, self.max_step + 1, (B,), device=self.device)
+    noise = torch.randn_like(latents)
+    with torch.no_grad():
+        latents_noisy = self.scheduler.add_noise(latents, noise, t)
+        self.unet.disable_adapters()           # eps_theta: pretrained UNet + CFG
+        eps_pre = self.get_noise_preds(latents_noisy, t, text_embeddings, guidance_scale)
+        self.unet.enable_adapters()            # eps_phi: LoRA UNet, conditional only
+        eps_lora = self.unet(latents_noisy, t, encoder_hidden_states=cond).sample
+    w = (1 - self.alphas[t]).view(B, 1, 1, 1)
+    grad = torch.nan_to_num(w * (eps_pre - eps_lora))
+    target = (latents - grad).detach()
+    loss_vsd = 0.5 * F.mse_loss(latents, target, reduction="sum") / B
+
+    # LoRA learns the distribution of the current latents
+    t2 = torch.randint(self.min_step, self.max_step + 1, (B,), device=self.device)
+    noise2 = torch.randn_like(latents)
+    noisy2 = self.scheduler.add_noise(latents.detach(), noise2, t2)
+    pred2 = self.unet(noisy2, t2, encoder_hidden_states=cond).sample
+    loss_lora = F.mse_loss(pred2.float(), noise2.float())
+    return loss_vsd + lora_loss_weight * loss_lora
 \end{lstlisting}
 
 %-------------------------------------------------------------------------
@@ -47,30 +86,48 @@ def get_vsd_loss(
 \label{sec:sdi}
 
 \noindent\textbf{Concept.}
-\TODO{Which weakness of SDS does SDI~\cite{lukoianov2024sdi} try to fix? How does it obtain the noisy sample differently (\cf DDIM~\cite{song2021ddim}), and how does its timestep schedule differ from SDS?}
+SDI~\cite{lukoianov2024sdi} keeps the SDS framework but fixes its noise: instead of a fresh random $\epsilon$ at every step, the noisy latent $x_t$ is obtained by running DDIM~\cite{song2021ddim} \emph{backwards} from the current $x_0$.
+The noise is therefore consistent with the current image, so denoising $x_t$ gives a target $\hat x_0$ that is a sharpened version of the current latent rather than an average over many random noises.
+The latent is then pulled towards $\hat x_0$ with a simple MSE.
+SDI also replaces the random timestep of SDS with a schedule that goes from large to small $t$, so the image first settles its layout and then refines its details.
 
 \noindent\textbf{Implementation.}
-\TODO{Paste your \texttt{invert\_noise()} (DDIM inversion) and \texttt{get\_sdi\_loss()} into the two code blocks below, then walk through them: how your inversion loop works, how the timestep changes over the iterations, and how and when the target is updated.}
+\texttt{invert\_noise()} is a hand-written deterministic DDIM inversion ($\eta = 0$, as allowed): it splits $[0, t]$ into $n$ steps and, at each step, predicts the noise with CFG scale $-7.5$, estimates $\hat x_0$, and re-noises it to the next (larger) timestep.
+In \texttt{get\_sdi\_loss()}, $t$ is annealed linearly from 980 to 20 over the 1000 iterations.
+Every \texttt{update\_interval} iterations the current latent is inverted to $x_t$, the noise is predicted with CFG 7.5, and a one-step denoise gives the target, which is cached.
+In between, the loss is only the MSE to the cached target, so most iterations need no UNet call at all.
 
 \begin{lstlisting}
 @torch.no_grad()
-def invert_noise(
-    self, latents, target_t, text_embeddings,
-    guidance_scale=-7.5, n_steps=10, eta=0.3,
-):
-    # Paste your DDIM inversion here
-    ...
+def invert_noise(self, latents, target_t, text_embeddings, guidance_scale=-7.5, n_steps=10, eta=0.3):
+    B = latents.shape[0]
+    target = int(target_t.max().item())
+    timesteps = torch.linspace(0, target, n_steps + 1, device=self.device).round().long()
+    x = latents.clone()
+    for t_cur, t_next in zip(timesteps[:-1], timesteps[1:]):
+        a_cur, a_next = self.alphas[t_cur], self.alphas[t_next]
+        eps = self.get_noise_preds(x, t_cur.expand(B), text_embeddings, guidance_scale)
+        x0 = (x - (1 - a_cur).sqrt() * eps) / a_cur.sqrt()
+        x = a_next.sqrt() * x0 + (1 - a_next).sqrt() * eps
+    return x
 \end{lstlisting}
 
 \begin{lstlisting}
-def get_sdi_loss(
-    self, latents, text_embeddings,
-    guidance_scale=7.5,
-    current_iter=0, total_iters=500,
-    inversion_guidance_scale=-7.5,
-    inversion_n_steps=10, inversion_eta=0.3,
-    update_interval=25,
-):
-    # Paste your implementation here
-    ...
+def get_sdi_loss(self, latents, text_embeddings, guidance_scale=7.5,
+                 current_iter=0, total_iters=500, inversion_guidance_scale=-7.5,
+                 inversion_n_steps=10, inversion_eta=0.3, update_interval=25):
+    B = latents.shape[0]
+    progress = current_iter / max(1, total_iters)        # anneal t: 980 -> 20
+    t_val = int(round(self.max_step - (self.max_step - self.min_step) * progress))
+    t = torch.full((B,), t_val, dtype=torch.long, device=self.device)
+
+    if current_iter % update_interval == 0 or not hasattr(self, 'sdi_target'):
+        with torch.no_grad():
+            x_t = self.invert_noise(latents, t, text_embeddings, inversion_guidance_scale,
+                                    inversion_n_steps, inversion_eta)
+            eps = self.get_noise_preds(x_t, t, text_embeddings, guidance_scale)
+            a_t = self.alphas[t].view(B, 1, 1, 1)
+            target = (x_t - (1 - a_t).sqrt() * eps) / a_t.sqrt()   # one-step denoise
+            self.sdi_target = torch.nan_to_num(target).detach()
+    return 0.5 * F.mse_loss(latents, self.sdi_target, reduction="sum") / B
 \end{lstlisting}

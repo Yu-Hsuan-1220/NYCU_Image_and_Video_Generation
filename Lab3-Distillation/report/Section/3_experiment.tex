@@ -3,11 +3,11 @@
 % [6 pts]  Quantitative results (CLIP score) + qualitative results (output images).
 % [6 pts]  Ablation: (1) SDS guidance_scale; (2) SDI inversion_n_steps; (3) SDI sdi_update_interval.
 % [2 pts]  All hyperparameters for each task.
-%
-% Images: copy outputs/{sds,vsd,sdi}/*.png to Figure/{sds,vsd,sdi}/.
-% A missing image is drawn as a framed placeholder box showing its expected path.
 
 \input{Figure/figure_page}  % Figs. 2-6 together on one figure page
+
+All experiments use the 10 default prompts in \texttt{eval.sh} and the hyperparameters in \cref{tab:hparams}, on a single RTX 4090.
+\texttt{main.py} does not fix a random seed, so re-running a setting gives slightly different images and scores.
 
 %-------------------------------------------------------------------------
 \subsection{Quantitative Results}
@@ -15,13 +15,22 @@
 
 \input{Table/1_clip}
 
-\TODO{Which method has the best average CLIP score (\cref{tab:clip})? Are there prompts where the ranking changes, and why might that be? Does the score agree with your visual impression?}
+All three methods are above the 0.28 threshold (\cref{tab:clip}).
+SDS has the highest average (0.3071), followed by SDI (0.3010) and VSD (0.2982), but the gap is small and the ranking changes from prompt to prompt: VSD wins the scenery prompts (cabin, church, castle), SDI wins the villa, and SDS wins most object-centric prompts.
+
+The scores do not fully agree with my visual impression.
+CLIP ViT-B/32 sees a $224\times224$ image and mostly checks whether the prompt's object is present and recognizable; it is not very sensitive to blur.
+A blurry but clean, centered object from SDS therefore scores well, while the busy high-frequency textures of VSD and the occasional odd layout of SDI (\eg the striped road for the car prompt) cost them points even when the image looks sharper.
 
 %-------------------------------------------------------------------------
 \subsection{Qualitative Results}
 \label{sec:qualitative}
 
-\TODO{Compare the methods visually and point to concrete examples in \cref{fig:qualitative}. What are the typical strengths and failure cases of each method?}
+\Cref{fig:qualitative} shows clear differences between the methods.
+\textbf{SDS} produces the right content and layout, but every image is blurry, low in detail and has washed-out colors.
+\textbf{VSD} is much sharper and has rich detail (the dog's fur, the castle, the cabin), but the colors are over-saturated and the backgrounds often break into painterly, mosaic-like textures (the rock wall behind the bus, the water around the boat, the road).
+\textbf{SDI} gives the cleanest results overall: sharp objects, natural colors, and simple backgrounds (the villa, burger, bus and boat).
+Its failure cases are a somewhat flat, illustration-like style and, occasionally, a repeated pattern instead of a single object (the car prompt).
 
 %-------------------------------------------------------------------------
 \subsection{Ablation Study}
@@ -29,22 +38,33 @@
 
 \input{Table/2_ablation}
 
-\TODO{Briefly describe the setup: which prompts and values were tested; all other hyperparameters follow \cref{tab:hparams}. \Cref{tab:ablation} lists the CLIP scores of all three ablations.}
+Each ablation changes one hyperparameter and keeps all others as in \cref{tab:hparams}.
+Every value is run on all 10 prompts; \cref{tab:ablation} reports the average CLIP score, and \cref{fig:abl_sds_gs,fig:abl_sdi_steps,fig:abl_sdi_interval} show three of the prompts.
+For SDI I also report the average optimization time per prompt.
 
 \subsubsection{SDS: \texttt{guidance\_scale}}
 \label{sec:abl_sds_gs}
 
-\TODO{How do the results change as the guidance scale increases (\cref{fig:abl_sds_gs}, \cref{tab:ablation}(a)), and why? Which value works best, and how does it compare with the guidance scale typically used for ordinary sampling?}
+The guidance scale has a large effect on SDS (\cref{fig:abl_sds_gs}, \cref{tab:ablation}(a)).
+At 7.5 and 15 the images are blurry blobs with almost no detail, and for some prompts the object does not appear at all.
+Increasing the scale makes the images sharper and more saturated; 25--50 gives the best scores (0.307--0.308).
+At 100 the colors become too strong and noisy textures appear, so the score drops slightly.
+SDS therefore needs a much larger scale than the usual 7.5 for ordinary sampling: because the random noise changes at every step, the guidance signal is weak on average and has to be amplified to be noticed.
 
 \subsubsection{SDI: \texttt{inversion\_n\_steps}}
 \label{sec:abl_sdi_steps}
 
-\TODO{How do the results and the runtime change with the number of inversion steps (\cref{fig:abl_sdi_steps}, \cref{tab:ablation}(b)), and why? Is there a trade-off?}
+With a single inversion step the method fails completely (0.2030, nearly blank images in \cref{fig:abl_sdi_steps}): one large DDIM step from $0$ to $t$ is too inaccurate, so the inverted noise does not match the image and the target is meaningless.
+From 3 steps on, the inversion is good enough and the score is stable around 0.30; 25 steps gives the best score (0.3054) and slightly more detailed images.
+The runtime grows almost linearly with the number of steps (13\,s for 1 step, 44\,s for 10, 93\,s for 25), so there is a clear trade-off; the default of 10 steps is a reasonable middle ground.
 
 \subsubsection{SDI: \texttt{sdi\_update\_interval}}
 \label{sec:abl_sdi_interval}
 
-\TODO{How do the results change with the update interval (\cref{fig:abl_sdi_interval}, \cref{tab:ablation}(c)), and why? What happens at the two extremes?}
+Refreshing the target more often gives better results (\cref{fig:abl_sdi_interval}, \cref{tab:ablation}(c)).
+Between 25 and 500 the score decreases slowly (0.301 to 0.294) and the images become less refined, because the latent keeps chasing an older target that was computed when the image and the timestep were different.
+At the extreme of 1000, the target is computed only once at the first iteration, from a random latent at $t\approx980$, so the result is just a blurry color blob (0.2226).
+A larger interval is much cheaper (5\,s instead of 44\,s per prompt), but the default of 25 gives the best quality.
 
 %-------------------------------------------------------------------------
 \subsection{Hyperparameters}
@@ -52,4 +72,6 @@
 
 \input{Table/3_hparams}
 
-\TODO{Fill in \cref{tab:hparams} with the settings you actually used (defaults are pre-filled from \texttt{main.py} / README) and justify any value you changed.}
+I used the default hyperparameters from the README and \texttt{main.py} for all three tasks, listed in \cref{tab:hparams}.
+All other settings are shared: negative prompt ``low quality'', timestep range $[0.02, 0.98]$, AdamW with a cosine schedule and 100 warm-up steps, gradient clipping at norm 1, and fp32.
+Since all three methods already passed the CLIP threshold with these values, I did not tune them further.

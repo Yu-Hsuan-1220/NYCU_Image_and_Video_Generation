@@ -2,4 +2,9 @@
 \label{sec:conclusion}
 % [2 pts] Wrap up all the context in your report and give a short summary.
 
-\TODO{Summarize what you implemented, the main quantitative and qualitative findings, the key lessons from the ablations, and your answer to why VSD and SDI outperform SDS.}
+I implemented SDS, VSD and SDI for text-to-image generation with Stable Diffusion 2.1-base, including a hand-written DDIM inversion for SDI.
+All three methods pass the CLIP threshold (SDS 0.3071, SDI 0.3010, VSD 0.2982).
+Visually, SDS is blurry and washed out, VSD is sharp but over-saturated, and SDI gives the cleanest images.
+The ablations show that SDS needs a much larger guidance scale than ordinary sampling, that SDI needs an accurate inversion (at least a few steps), and that its target must be refreshed often enough.
+Directly optimizing the diffusion loss produces only noise, which shows why SDS drops the UNet Jacobian.
+Finally, VSD and SDI improve over SDS for the same reason: they replace the random noise in the SDS update with something that is consistent with the current image, either a learned noise prediction or an inverted one, which gives a cleaner and more stable optimization signal.
