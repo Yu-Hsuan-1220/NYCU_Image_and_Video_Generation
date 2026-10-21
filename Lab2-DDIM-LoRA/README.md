@@ -1,252 +1,255 @@
 <div align=center>
   <h1>
-  Denoising Diffusion Implicit Models (DDIM) and LoRA  
+  Denoising Diffusion Implicit Models (DDIM) and LoRA
   </h1>
   <p>
     <b>NYCU: Image and Video Generation (2026 Fall)</b><br>
     Programming Assignment 2
   </p>
-</div> 
+</div>
 
 <div align=center>
   <p>
-    Instructor: <b>Yu-Lun Liu</b><br>
-    TA: <b>Jing-En Huang</b><br>
-    Assignment Design: <b>Huai-Hsun Cheng</b> <b>Siang-Ling Zhang</b>
+    Instructor: <b>Yu-Lun Liu</b> &nbsp;|&nbsp; TA: <b>Jing-En Huang</b>
   </p>
+</div>
+
+<div align=center>
+  <img src="report/assets/task2_2/compare_grid.png" width="90%">
+  <p><i>DreamBooth + LoRA on 4 photos of one cat — top: base SD v1.4, bottom: with the LoRA (same prompt and seed per column)</i></p>
 </div>
 
 ---
 
-## 📘 Abstract
-![Lab2](./assets/images/lab2.png)
+## 📘 Overview
 
-(1) **Denoising Diffusion Implicit Models (DDIM)** can generate samples with fewer reverse steps than DDPM. Sampling is deterministic when `eta=0` and stochastic when `eta>0`. In Task 1-1, the Swiss Roll notebook trains a DDPM for 5,000 iterations and then evaluates DDIM sampling. In Task 1-2, reuse a **noise-prediction image DDPM checkpoint from Lab 1**, vary the DDIM step count and eta, and evaluate image quality with FID.
+Two practical limitations of diffusion models, addressed one at a time.
 
-(2) **LoRA (Low-Rank Adaptation)** is an efficient fine-tuning technique for neural networks that enables the customization of diffusion models with relatively small datasets, ranging from a few images to a few thousand. The main objective of Task 2 is to become familiar with the LoRA fine-tuning process for diffusion models. Instead of implementing LoRA from scratch, you will utilize a pre-existing LoRA module available in the diffusers library. This task will allow you to creatively develop and fine-tune a diffusion model tailored to your specific data and task requirements. Moreover, you will experiment with DreamBooth to create personalized diffusion models based on a particular subject of your choice.
+**Task 1 — DDIM.** DDPM needs all 1000 reverse steps because each one is a Markov transition. DDIM
+keeps the DDPM training objective, so the **Lab 1 checkpoint is reused as is**, but samples on a
+short sub-sequence of timesteps with a tunable stochasticity η. Checked first on the 2D Swiss Roll
+(Task 1-1), then swept over step count × η on AFHQ 64×64 with FID (Task 1-2).
 
-- [Assignment Instructions (PDF)](./assets/Lab2-DDIM-LoRA.pdf)
-- [Denoising Diffusion Implicit Models (DDIM) – arXiv](https://arxiv.org/pdf/2010.02502)
-- [LoRA: Low-Rank Adaptation of Large Language Models – arXiv](https://arxiv.org/pdf/2106.09685)
+**Task 2 — LoRA.** Fine-tuning Stable Diffusion v1.4 with rank-4 adapters on the UNet attention
+layers: once to learn a **style** (Naruto, Task 2-1), and once with **DreamBooth** to learn a
+specific **identity** from four photos (Task 2-2).
+
+Full write-up: **[`report/main.pdf`](./report/main.pdf)**.
 
 ---
 
-## Scope and student editing rules
+## 🎯 Task 1-1 — DDIM on the Swiss Roll
 
-- Edit algorithm implementations only inside the marked **TODO blocks**. Carry over the required Lab 1 DDPM/network implementations into their existing TODO blocks, then implement the Lab 2 DDIM TODOs. Leave the fixed notebook training hyperparameters unchanged.
-- For Task 2, edit only the marked **TODO configuration regions** in `task2/scripts/*.sh` and `task2/lora_inference.ipynb`. Configure the dataset, model/weight paths, prompts, output location and other exposed settings for your experiment. Defaults that already fit your experiment can stay unchanged. No LoRA implementation is required.
+<table>
+<tr>
+<td width="50%"><img src="report/assets/task1_1/ddpm_samples.png"></td>
+<td width="50%"><img src="report/assets/task1_1/ddim_samples.png"></td>
+</tr>
+<tr>
+<td align="center"><i>DDPM, 1000 steps — Chamfer distance 9.41</i></td>
+<td align="center"><i>DDIM, 50 steps, η = 0 — Chamfer distance <b>39.78</b> (target &lt; 40)</i></td>
+</tr>
+</table>
 
-## ⚙️ Setup
+Both samplers recover the spiral with both arms separated and no mode collapse, from the same network
+trained for 5000 iterations. The difference is in the outliers: DDIM leaves more points in the empty
+space between the arms, which is what raises the Chamfer distance.
+
+That is the expected price of 20× fewer network evaluations. DDPM takes 1000 small steps and injects
+fresh noise at each, so an error at one step is partly washed out later. Deterministic DDIM takes 50
+jumps of 20 timesteps and commits fully to the current x̂₀ each time — a point pushed the wrong way
+early has no mechanism to return to the manifold.
+
+---
+
+## 🎯 Task 1-2 — DDIM for image generation
+
+Lab 1's best checkpoint (linear schedule, noise predictor, DDPM FID 8.29), sampled with every
+combination of steps S and η — 20 runs of 500 images each.
+
+| FID ↓ (η \ S) | 10 | 20 | 50 | 100 | 1000 |
+|---|---|---|---|---|---|
+| 0.0 | 34.18 | 21.30 | 13.04 | 9.29 | 24.55 |
+| 0.2 | 27.80 | 21.87 | 11.07 | 8.32 | 15.37 |
+| 0.5 | **25.53** | **14.61** | **10.67** | **7.58** | 8.11 |
+| 1.0 | 41.94 | 25.37 | 11.84 | 11.54 | **7.20** |
+
+![DDIM sample grid](report/assets/task1_2/ddim_samples_grid.png)
+
+*Same layout as the table: rows η = 0, 0.2, 0.5, 1.0; columns S = 10, 20, 50, 100, 1000.*
+
+**10× less compute, no loss in quality.** S = 100 with η = 0.5 reaches FID **7.58**, better than the
+full 1000-step DDPM sampler (8.29) on the same checkpoint. S = 50 already gives ≈ 11 at a twentieth
+of the cost.
+
+**More steps help, up to a point.** Every row improves sharply from S = 10 to S = 100. With 10 steps
+each jump spans 100 timesteps, and the sampler commits to an x̂₀ that is still close to a dataset
+average — the first column is blurry and low-contrast.
+
+**η = 1, S = 1000 is DDPM.** Mathematically this configuration is the DDPM sampler; its 7.20 against
+Lab 1's 8.29 is within the run-to-run variance of a 500-sample FID, which mostly confirms the DDIM
+step is correct.
+
+**Deterministic DDIM degrades at S = 1000 (24.55).** A deterministic sampler follows one trajectory
+and cannot correct an error once made, so small errors from the imperfect ε_θ accumulate over 1000
+steps into high-frequency texture and colour noise (top-right of the grid). Injected noise acts as a
+corrector, which is why at S = 1000 FID improves monotonically with η.
+
+**Difference from the paper.** The DDIM paper finds η = 0 best at small S; here a moderate η = 0.5
+wins for every S ≤ 100. A likely reason is that this is a modest UNet trained for 100k iterations —
+its noise prediction is less accurate, so a little error-correcting noise outweighs the
+discretization advantage of the deterministic path.
+
+---
+
+## 🎯 Task 2-1 — LoRA on a style (Naruto)
+
+Dataset: [`lambdalabs/naruto-blip-captions`](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions)
+— 1,221 Naruto character screenshots with BLIP captions. The captions describe content
+(*"a man with dark hair and brown eyes"*) but never the style, so the LoRA has to learn the style as a
+property of the images rather than of a trigger word.
+
+![Naruto training images](report/assets/task2_1/train_grid.png)
+
+### Results
+
+![Naruto compare](report/assets/task2_1/compare_grid.png)
+
+*Top: base SD v1.4. Bottom: + Naruto LoRA. Prompts, left to right: a cute bear · a man with
+sunglasses · a cute cat · a girl in a forest · an old man with a white beard · a castle on a hill
+(seed 10, 30 steps, CFG 7.5).*
+
+None of the prompts mention Naruto or anime, yet every LoRA image switches to flat cel shading, dark
+outlines and anime eyes while keeping the prompt's content and the base model's composition. The
+transfer is strongest on **characters**, still clear on **animals** (rarely seen in training, so the
+style is learned as a rendering style rather than tied to faces), and weakest on **scenery** — the
+dataset contains almost no buildings without a character.
+
+### Training progress
+
+| Epoch 1 | Epoch 5 | Epoch 10 | Epoch 15 |
+|---|---|---|---|
+| ![](report/assets/task2_1/validation_epoch_00.png) | ![](report/assets/task2_1/validation_epoch_04.png) | ![](report/assets/task2_1/validation_epoch_09.png) | ![](report/assets/task2_1/validation_epoch_14.png) |
+
+*Validation prompt "a cute bear".* Photographic after one epoch, smooth plush-like 3D renders by
+epoch 5, and the flat anime look from epoch 10 on. The black squares are false positives of Stable
+Diffusion's safety checker, not training failures.
+
+---
+
+## 🎯 Task 2-2 — DreamBooth + LoRA on an identity
+
+Four photos of one long-haired ginger cat (the provided `sample_data/dreambooth-cat`), bound to the
+identifier **`sks`** with the instance prompt *"a photo of sks cat"*.
+
+![DreamBooth training images](report/assets/task2_2/train_grid.png)
+
+The generated results are the hero image at the top. *Prompts, left to right: a photo of sks cat in
+a bucket · on the beach · sleeping on a sofa · in front of the Eiffel Tower · an oil painting of sks
+cat · an anime drawing of sks cat (seed 10, 30 steps, CFG 7.5).*
+
+**The identity is learned.** For the base model `sks` is meaningless — a generic black-and-white cat,
+and for the anime prompt even a girl with cat ears. With the LoRA every image shows the same fluffy
+ginger cat with a white chest and green eyes, consistent across six very different prompts.
+
+**The context is followed.** The beach, the sofa (eyes closed, as asked), the Eiffel Tower and the
+painterly oil rendering are all scenes that never appear in the four training photos.
+
+**Typical overfitting on four images.** All outputs inherit the warm palette of the training photos;
+the cat sits *next to* the bucket rather than in it; and the anime prompt looks like the oil painting
+(language drift). Prior-preservation loss, fewer steps or more varied photos would reduce these — prior
+preservation was not enabled in this run.
+
+---
+
+## 📂 Code structure
+
+Files marked ✎ are the ones implemented or configured for this assignment; the rest is provided
+scaffolding.
+
+```
+.
+├── task1                                (Task 1: DDIM)
+│   ├── 2d_plot_diffusion_todo           (Task 1-1: Swiss Roll)
+│   │   ├── network.py                ✎  # SimpleNet, carried over from Lab 1
+│   │   ├── ddpm.py                   ✎  # Lab 1 DDPM + ddim_p_sample, ddim_p_sample_loop
+│   │   └── ddpm_tutorial.ipynb          # Training & evaluation notebook
+│   └── image_diffusion_todo             (Task 1-2: Image generation)
+│       ├── scheduler.py              ✎  # Lab 1 DDPM scheduler + DDIMScheduler
+│       ├── model.py                  ✎  # Lab 1 losses, carried over
+│       ├── sampling.py                  # DDPM / DDIM sampling script
+│       ├── train.py                     # Training script
+│       └── fid/                         # FID evaluation tools
+└── task2                                (Task 2: LoRA)
+    ├── scripts
+    │   ├── train_lora.sh             ✎  # Task 2-1: style LoRA (Naruto)
+    │   ├── train_lora_custom.sh         # Style LoRA on a custom folder (unused)
+    │   └── train_dreambooth_lora.sh  ✎  # Task 2-2: DreamBooth + LoRA
+    ├── lora_inference.ipynb          ✎  # Before/after comparison grids
+    ├── train_lora.py                    # Provided LoRA training code
+    ├── train_dreambooth_lora.py         # Provided DreamBooth + LoRA training code
+    └── 112550011_task2-{1,2}_lora_weight.txt   # Links to the trained LoRA weights
+```
+
+### What was implemented
+
+**Task 1-1** — `ddim_p_sample` as one DDIM step: predict ε, form x̂₀, and move to the previous
+timestep of the sub-sequence along the deterministic direction plus σ_t-scaled noise;
+`ddim_p_sample_loop` as the loop over an evenly spaced sub-sequence of the 1000 training timesteps.
+
+**Task 1-2** — `DDIMScheduler.set_inference_timesteps` (the strided sub-sequence) and
+`DDIMScheduler.step` (the same update in image space, with η controlling σ_t, so η = 1 with all 1000
+steps reduces exactly to DDPM).
+
+**Task 2** — no LoRA code to write; the work is configuration. Both scripts switch to fp16 mixed
+precision; the style LoRA is trained for 15 epochs instead of 100 (the style is fully learned by
+then), and the DreamBooth instance prompt is changed to *"a photo of sks cat"* so that `sks` directly
+modifies "cat".
+
+---
+
+## ⚙️ Reproducing
 
 ### Environment
-Create a `conda` environment and install dependencies:
+
 ```bash
 conda create -n lab2-ddim-lora python=3.9 -y
 conda activate lab2-ddim-lora
 pip install -r requirements.txt
 ```
----
 
-📂 Code Structure
-```
-.
-├── task1 (Task 1: DDIM)
-│   ├── 2d_plot_diffusion_todo (Task 1-1: Swiss Roll)
-│   │   ├── chamferdist.py
-│   │   ├── dataset.py
-│   │   ├── ddpm.py                # TODO: Implement DDIM sampling (ddim_p_sample, ddim_p_sample_loop)
-│   │   ├── ddpm_tutorial.ipynb
-│   │   ├── __init__.py
-│   │   └── network.py
-│   └── image_diffusion_todo (Task 1-2: Image Generation)
-│       ├── dataset.py            # AFHQ dataset loader
-│       ├── fid                   # FID evaluation tools
-│       ├── model.py              # Diffusion model
-│       ├── module.py             # Basic modules of a prediction network
-│       ├── network.py            # Prediction network
-│       ├── sampling.py           # Image sampling script for both DDIM and DDPM
-│       ├── scheduler.py          # TODO: Implement DDIM scheduler
-│       └── train.py              # Training code
-└── task2 (Task 2: LoRA)
-    ├── lora_inference.ipynb
-    ├── sample_data
-    │   ├── artistic-custom
-    │   └── dreambooth-cat
-    ├── scripts
-    │   ├── train_dreambooth_lora.sh  # Training script for DreamBooth + LoRA
-    │   ├── train_lora_custom.sh      # Training script for LoRA w/ custom data
-    │   └── train_lora.sh             # Training script for LoRA
-    ├── train_dreambooth_lora.py      # Training code for DreamBooth + LoRA
-    ├── train_lora.py                 # Training code for LoRA
-    └── utils.py
-```
----
-<h2><b>📝 Task 1 – DDIM</b></h2>
-
-<h3><b>Task 1-1: Swiss Roll DDIM</b></h3>
-
-> Implement and test DDIM sampling on a 2D Swiss Roll dataset.
-
-**Key TODOs:**
-
-- DDIM sampling functions: `ddim_p_sample`, `ddim_p_sample_loop` (ddpm.py)
-
-Start the notebook from its own directory so imports and reference-image paths resolve correctly:
+### Task 1-1
 
 ```bash
-cd task1/2d_plot_diffusion_todo/
+cd task1/2d_plot_diffusion_todo
 jupyter lab ddpm_tutorial.ipynb
 ```
 
-Run all cells in order. The notebook trains a fresh Swiss Roll model for **5,000 iterations**, then evaluates DDPM and DDIM using that in-memory model. **Do not load Lab 1 weights for Swiss Roll.** Keep the supplied training hyperparameters unchanged. Include explanations of the TODO implementations, the DDIM evaluation figure and a screenshot of its Chamfer distance in the report.
+The notebook trains a fresh Swiss Roll model for 5000 iterations and evaluates DDPM and DDIM on it.
+Each sampling call draws new noise, so the DDIM Chamfer distance varies from run to run around the
+40 threshold.
 
-**Chamfer Distance and repeated sampling:** The DDIM Chamfer Distance target is **< 40**. Each sampling call draws new initial noise, so the score can vary between runs even when `eta=0`; an individual run can exceed 40 with a correct implementation. You may rerun the final **DDIM evaluation cell** without retraining or editing the notebook. Keep the trained model, reference points, inference steps and eta unchanged. Repeated sampling may produce a score below 40, but does not guarantee it. Submit the figure and Chamfer Distance screenshot from the same evaluation run.
+### Task 1-2
 
-<h3><b>Task 1-2: Image Generation with DDIM</b></h3>
-
-> Extend DDIM sampling on image diffusion.
-
-**Key TODOs:**
-
-- `DDIMScheduler.set_inference_timesteps` and `DDIMScheduler.step` (`scheduler.py`). DDIM in this assignment uses the **noise predictor**.
-
-**Experiments:**
-
-- Reuse one Lab 1 image checkpoint trained with `predictor=noise`; image DDPM retraining is not required for Lab 2.
-- Run every combination of `ddim_steps = {10, 20, 50, 100, 1000}` and `eta = {0.0, 0.2, 0.5, 1.0}`: **20 sampling runs and 20 FID measurements**.
-- The sampling code inherits the checkpoint's training beta schedule exactly. Keep that schedule fixed across the 20 runs. Predictors `x0` and `mean`, and additional schedule comparisons, are outside the required experiments.
-- Include explanations of the DDIM TODOs, a 4-by-5 FID table and discussion of the results in the report.
-
-**🚀 Usage**
-
-**DDIM Sampling**
-```bash
-cd task1/image_diffusion_todo/
-python sampling.py --ckpt_path {CKPT} --save_dir {SAVE_DIR} \
---sample_method ddim \
---ddim_steps {DDIM_STEPS} \
---eta {ETA}
-```
-> **Parameters:** \
-> `--sample_method`: ddpm, ddim \
-> `--ddim_steps`: Number of DDIM inference steps \
-> `--eta`: DDIM eta parameter
-
-Predictor metadata is read from the checkpoint. If an older Lab 1 checkpoint does not contain predictor metadata, pass `--predictor noise` explicitly after confirming it was trained to predict noise. A conflicting predictor override is rejected. Use a separate sample directory for each `(ddim_steps, eta)` combination; each run produces 500 images for FID.
-
-**Evaluation**
-
-From `task1/image_diffusion_todo/`:
+From `task1/image_diffusion_todo/`, with a Lab 1 checkpoint trained with `--predictor noise`:
 
 ```bash
-python dataset.py   # Run once to prepare AFHQ eval set
-python fid/measure_fid.py data/afhq/eval/ {SAVE_DIR}
+python dataset.py                 # once, prepares the AFHQ eval set
+python sampling.py --ckpt_path {CKPT} --save_dir samples/ddim_s{S}_eta{ETA} \
+    --sample_method ddim --ddim_steps {S} --eta {ETA}
+python fid/measure_fid.py data/afhq/eval samples/ddim_s{S}_eta{ETA}
 ```
 
-Run the FID command once for each of the 20 sample directories. Use the prepared `data/afhq/eval/` directory as the reference set.
+Repeat for S ∈ {10, 20, 50, 100, 1000} and η ∈ {0.0, 0.2, 0.5, 1.0}, one directory per pair.
 
-<h2><b>📝 Task 2 – LoRA</b></h2>
+### Task 2
 
-**Key TODOs:**
-
-- Task 2-1: train one style LoRA using **either** a public dataset **or** a custom dataset.
-- Task 2-2: train DreamBooth with LoRA on one identity.
-- Configure and run the provided scripts and inference notebook. No LoRA algorithm implementation is required. Authenticate with Hugging Face and confirm access to the selected base model before starting.
-
-The training scripts default to `MIXED_PRECISION="no"`. To use fp16 training on a compatible GPU, set `MIXED_PRECISION="fp16"` in the script's TODO configuration region.
-
-<h3><b>Task 2-1. Train LoRA on a Specific Visual Style</b></h3>
-
-> Train a LoRA for a specific "style". It could be artistic, cinematic, photographic, or any other visual style. You have two options to choose a dataset for training LoRA.
-
-
-**(Option 1) Use an open-source dataset**
-
-You can utilize various open-source image-caption datasets for LoRA training, many of which are available on Hugging Face. For instance, you can explore datasets listed here. By replacing the `DATASET_NAME` argument with the desired dataset, you can seamlessly train LoRA with new data. Additionally, you are welcome to use any other open-source datasets, provided that you clearly cite the appropriate references.
-
-
-**🚀 Usage**
-
-We provide the code for LoRA training of Stable Diffusion 1.4 in train_lora.py. You can simply run the code using:
+Authenticate with Hugging Face first, then from `task2/`:
 
 ```bash
-cd task2/
-sh scripts/train_lora.sh
+sh scripts/train_lora.sh               # Task 2-1, Naruto style
+sh scripts/train_dreambooth_lora.sh    # Task 2-2, sks cat
 ```
 
-The default training dataset is set as:
-```bash
-export DATASET_NAME="lambdalabs/naruto-blip-captions"
-```
-which consists of Naruto images with synthetic captions generated with [BLIP-2](https://github.com/salesforce/BLIP). The below image shows the outputs of Stable Diffusion before and after LoRA training on this dataset. You can first check if LoRA works properly based on this dataset. The validation images after each epoch will be stored in {$output_dir}/validation/.
-
-A simple inference code for Stable Diffusion with LoRA is provided at [lora_inference.ipynb](task2/lora_inference.ipynb). Set the selected base model and your trained LoRA output path in its TODO configuration region.
-
-![lora_example](./assets/images/lora_example.png)
-
-(Credit: lambdalabs/naruto-blip-captions)
-
-**(Option 2) Prepare your own dataset**
-
-If you want to try training LoRA on your own creative dataset, you can refer to `task2/scripts/train_lora_custom.sh` for the necessary arguments to train on a custom dataset. Be sure to update the `TRAIN_DATA_DIR` to point to the directory containing your data. We provide a sample dataset in `task2/sample_data/artistic-custom` consisting of four images, which were generated using GPT-4. The image below showcases the results of LoRA training on this sample dataset.
-
-**🚀 Usage**
-
-Refer to [this link](https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder) for how to organize the dataset folder. Then, train the LoRA using:
-
-```bash
-sh scripts/train_lora_custom.sh
-```
-
-<h3><b>Task 2-2. Train DreamBooth with LoRA on a Specific Identity</b></h3>
-
-> Your objective is to train a DreamBooth model with LoRA to accurately capture and reproduce the identity of a specific subject. This subject could be anything personally meaningful to you, such as your own face, your pet, a favorite doll, or any other identifiable entity.
->
-> [DreamBooth](https://arxiv.org/abs/2208.12242) is a fine-tuning technique that allows diffusion models to learn a unique identifier for a specific subject, enabling the generation of images featuring that exact subject post-training. By combining DreamBooth with LoRA, you can achieve this fine-tuning with only a small number of images and in a relatively short time frame.
-
-**🚀 Usage**
-
-You can run DreamBooth + LoRA using:
-
-```bash
-sh scripts/train_dreambooth_lora.sh
-```
-
-We provide a sample dataset for training DreamBooth in `task2/sample_data/dreambooth-cat/`. To use your own data, update `INSTANCE_DIR` in the script's TODO configuration region.
-
-For both Task 2-1 and Task 2-2, describe the dataset and its source, and include training-image examples and generated images with their text prompts in the report. Use the inference notebook's TODO configuration region to select the corresponding trained weights.
-
-![dreambooth_example](./assets/images/dreambooth_example.png)
-
-<h2><b>📦 Submission</b></h2>
-
-Submit a single zip file {ID}_lab2.zip including:
-
-- Report (report.pdf)
-- The complete Task 1 code, excluding training checkpoints, datasets, generated sample directories and Inception weights.
-- Two text files containing the cloud links to your trained LoRA weights: `task2/{ID}_task2-1_lora_weight.txt` for the style model and `task2/{ID}_task2-2_lora_weight.txt` for the identity model.
-
-Example:
-```
-{ID}_lab2.zip
-├── report.pdf
-├── task1
-│   ├── 2d_plot_diffusion_todo
-│   │   ├── __init__.py
-│   │   ├── chamferdist.py
-│   │   ├── dataset.py
-│   │   ├── ddpm_tutorial.ipynb
-│   │   ├── ddpm.py
-│   │   └── network.py
-│   └── image_diffusion_todo
-│       ├── dataset.py
-│       ├── model.py
-│       ├── module.py
-│       ├── network.py
-│       ├── sampling.py
-│       ├── scheduler.py
-│       └── train.py
-└── task2
-    ├── {ID}_task2-1_lora_weight.txt
-    └── {ID}_task2-2_lora_weight.txt
-```
+Generate the comparison grids with `lora_inference.ipynb`, pointing its configuration cell at the
+trained weights. The trained weights are linked in `task2/112550011_task2-{1,2}_lora_weight.txt`.

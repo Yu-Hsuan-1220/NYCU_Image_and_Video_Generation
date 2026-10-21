@@ -1,180 +1,228 @@
-<div align="center">
+<div align=center>
   <h1>
-  Score Distillation Sampling
+  Score Distillation: SDS, VSD and SDI
   </h1>
   <p>
-    <b><a href="https://yulunalexliu.github.io/courses/image-video-generation/">NYCU: Image and Video Generation (2026 Fall)</a></b><br>
-    <a href="https://youtu.be/9qofXn6GtpY">Video</a>
-    |
-    <a href="https://github.com/Sytwu/Lab3-Distillation/blob/main/asset/Lab3-Distillation.pdf">Slides</a>
-    |
-    <a href="https://github.com/Sytwu/Lab3-Distillation">GitHub</a><br>
+    <b>NYCU: Image and Video Generation (2026 Fall)</b><br>
     Programming Assignment 3
   </p>
 </div>
 
-<div align="center">
+<div align=center>
   <p>
-    Instructor: <b>Yu-Lun Liu</b><br>
-    TA: <b>Li-Zhong Szu-Tu</b><br>
-    Design: <b>Ying-Huan Chen</b><br>
+    Instructor: <b>Yu-Lun Liu</b> &nbsp;|&nbsp; TA: <b>Li-Zhong Szu-Tu</b>
   </p>
 </div>
 
-<p align="center">
-  <img src="./asset/teaser.png" width="768"/>
-</p>
+<div align=center>
+  <table>
+  <tr>
+    <td align="center"><b>SDS</b></td>
+    <td><img src="report/Figure/sds/A_castle_next_to_a_river.png" width="150"></td>
+    <td><img src="report/Figure/sds/A_burger_on_the_table.png" width="150"></td>
+    <td><img src="report/Figure/sds/A_villa_close_to_the_pool.png" width="150"></td>
+    <td><img src="report/Figure/sds/a_cat_sitting_on_a_table.png" width="150"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>VSD</b></td>
+    <td><img src="report/Figure/vsd/A_castle_next_to_a_river.png" width="150"></td>
+    <td><img src="report/Figure/vsd/A_burger_on_the_table.png" width="150"></td>
+    <td><img src="report/Figure/vsd/A_villa_close_to_the_pool.png" width="150"></td>
+    <td><img src="report/Figure/vsd/a_cat_sitting_on_a_table.png" width="150"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>SDI</b></td>
+    <td><img src="report/Figure/sdi/A_castle_next_to_a_river.png" width="150"></td>
+    <td><img src="report/Figure/sdi/A_burger_on_the_table.png" width="150"></td>
+    <td><img src="report/Figure/sdi/A_villa_close_to_the_pool.png" width="150"></td>
+    <td><img src="report/Figure/sdi/a_cat_sitting_on_a_table.png" width="150"></td>
+  </tr>
+  </table>
+  <p><i>Stable Diffusion 2.1-base used as a critic to optimize a single latent — no reverse sampling</i></p>
+</div>
 
 ---
 
-## Description
+## 📘 Overview
 
-Score Distillation Sampling (SDS) is a diffusion-based technique that leverages a pretrained model to guide generation by **distilling the score** (how a sample aligns with the target distribution) back into the optimization of a parameterized target (e.g., a latent image).
+Ordinary diffusion sampling runs the reverse process from pure noise. **Score distillation** instead
+treats the image — here a 1×4×64×64 Stable Diffusion latent — as free parameters, and uses a frozen
+diffusion model only as a critic: at each iteration it looks at a noisy copy of the current latent
+and says which way to move to better match the prompt. This turns a diffusion model into a loss
+function, which is what makes text-to-3D methods like DreamFusion possible.
 
-This assignment focuses on **text-to-image** with three methods:
+Three methods are implemented for text-to-image on the 10 evaluation prompts, scored by CLIP
+ViT-B/32 image–text similarity:
 
-- **SDS** - Score Distillation Sampling (Task 1)
-- **VSD** - Variational Score Distillation (Task 2)
-- **SDI** - Score Distillation via Inversion (Task 3)
+- **SDS** — Score Distillation Sampling (DreamFusion)
+- **VSD** — Variational Score Distillation (ProlificDreamer)
+- **SDI** — Score Distillation via Inversion, with a hand-written DDIM inversion
+
+Full write-up: **[`report/main.pdf`](./report/main.pdf)**.
 
 ---
 
-## Setup
+## 🎯 Results
+
+| Method | CLIP ↑ | Visual impression |
+|---|---|---|
+| **SDS** | **0.3071** | right content, but blurry and washed out |
+| VSD | 0.2982 | sharp and detailed, but over-saturated with mosaic-like textures |
+| SDI | 0.3010 | cleanest — sharp objects, natural colours |
+
+All three clear the 0.28 threshold for full marks. SDS has the highest average, but the gap is small
+and the ranking changes per prompt (VSD wins cabin / church / castle, SDI wins the villa). CLIP
+ViT-B/32 mostly checks that the object is present and is not very sensitive to blur, so a clean but
+blurry SDS object scores well while VSD's busy textures cost points — the score does not fully
+match how sharp the images look.
+
+<table>
+<tr><td><b>SDS</b></td>
+<td><img src="report/Figure/sds/A_red_bus_driving_on_a_desert_road.png" width="9%"><img src="report/Figure/sds/a_boat_in_a_river.png" width="9%"><img src="report/Figure/sds/A_cabin_surrounded_by_forests.png" width="9%"><img src="report/Figure/sds/A_church_beside_a_lake.png" width="9%"><img src="report/Figure/sds/A_villa_close_to_the_pool.png" width="9%"><img src="report/Figure/sds/A_castle_next_to_a_river.png" width="9%"><img src="report/Figure/sds/A_burger_on_the_table.png" width="9%"><img src="report/Figure/sds/A_dog_sitting_on_grass.png" width="9%"><img src="report/Figure/sds/a_cat_sitting_on_a_table.png" width="9%"><img src="report/Figure/sds/A_car_on_the_road.png" width="9%"></td></tr>
+<tr><td><b>VSD</b></td>
+<td><img src="report/Figure/vsd/A_red_bus_driving_on_a_desert_road.png" width="9%"><img src="report/Figure/vsd/a_boat_in_a_river.png" width="9%"><img src="report/Figure/vsd/A_cabin_surrounded_by_forests.png" width="9%"><img src="report/Figure/vsd/A_church_beside_a_lake.png" width="9%"><img src="report/Figure/vsd/A_villa_close_to_the_pool.png" width="9%"><img src="report/Figure/vsd/A_castle_next_to_a_river.png" width="9%"><img src="report/Figure/vsd/A_burger_on_the_table.png" width="9%"><img src="report/Figure/vsd/A_dog_sitting_on_grass.png" width="9%"><img src="report/Figure/vsd/a_cat_sitting_on_a_table.png" width="9%"><img src="report/Figure/vsd/A_car_on_the_road.png" width="9%"></td></tr>
+<tr><td><b>SDI</b></td>
+<td><img src="report/Figure/sdi/A_red_bus_driving_on_a_desert_road.png" width="9%"><img src="report/Figure/sdi/a_boat_in_a_river.png" width="9%"><img src="report/Figure/sdi/A_cabin_surrounded_by_forests.png" width="9%"><img src="report/Figure/sdi/A_church_beside_a_lake.png" width="9%"><img src="report/Figure/sdi/A_villa_close_to_the_pool.png" width="9%"><img src="report/Figure/sdi/A_castle_next_to_a_river.png" width="9%"><img src="report/Figure/sdi/A_burger_on_the_table.png" width="9%"><img src="report/Figure/sdi/A_dog_sitting_on_grass.png" width="9%"><img src="report/Figure/sdi/a_cat_sitting_on_a_table.png" width="9%"><img src="report/Figure/sdi/A_car_on_the_road.png" width="9%"></td></tr>
+</table>
+
+*Left to right: red bus · boat · cabin · church · villa · castle · burger · dog · cat · car.*
+
+**Why VSD and SDI look better than SDS.** SDS compares the model's noise prediction against a *fresh
+random* ε at every step, so successive updates point in slightly different directions and average out
+into a smooth, blurry image; it needs a very large guidance scale (25) just to keep enough signal.
+VSD and SDI both replace that random ε with something consistent with the current image — a LoRA
+trained online on the current latents (VSD), or the noise recovered by DDIM inversion (SDI) — which
+gives a cleaner, more stable signal and works at the usual guidance of 7.5.
+
+---
+
+## 🔬 Ablations
+
+Each ablation changes one hyperparameter, runs all 10 prompts, and reports the average CLIP score.
+
+### SDS — `guidance_scale`
+
+| 7.5 | 15 | 25 | 50 | 100 |
+|---|---|---|---|---|
+| 0.2547 | 0.2837 | 0.3071 | **0.3076** | 0.3015 |
+
+At 7.5–15 the images are blurry blobs, sometimes without the object at all; 25–50 is the sweet spot;
+at 100 colours become too strong and noisy textures appear. SDS needs far more guidance than the 7.5
+of ordinary sampling because the random noise makes the averaged signal weak.
+
+### SDI — `inversion_n_steps`
+
+| | 1 | 3 | 5 | 10 | 25 |
+|---|---|---|---|---|---|
+| CLIP | 0.2030 | 0.3020 | 0.3018 | 0.3010 | **0.3054** |
+| Time / prompt | 13 s | 21 s | 26 s | 44 s | 93 s |
+
+A single inversion step fails completely: one DDIM jump from 0 to t is too inaccurate, so the
+recovered noise does not match the image. From 3 steps on the inversion is good enough; beyond that
+quality improves only slightly while runtime grows linearly.
+
+### SDI — `sdi_update_interval`
+
+| | 25 | 75 | 200 | 500 | 1000 |
+|---|---|---|---|---|---|
+| CLIP | **0.3010** | 0.2963 | 0.2960 | 0.2942 | 0.2226 |
+| Time / prompt | 44 s | 17 s | 8 s | 6 s | 5 s |
+
+Refreshing the target less often makes the latent chase a stale target computed for an older image
+and timestep. At 1000 the target is computed only once, from a random latent at t ≈ 980, and the
+result collapses into a colour blob.
+
+<table>
+<tr>
+<td width="33%"><b>SDS guidance</b> 7.5 → 100</td>
+<td width="33%"><b>SDI inversion steps</b> 1 → 25</td>
+<td width="33%"><b>SDI update interval</b> 25 → 1000</td>
+</tr>
+<tr>
+<td><img src="report/Figure/ablation/sds_guidance_scale/7.5/A_burger_on_the_table.png" width="19%"><img src="report/Figure/ablation/sds_guidance_scale/15/A_burger_on_the_table.png" width="19%"><img src="report/Figure/ablation/sds_guidance_scale/25/A_burger_on_the_table.png" width="19%"><img src="report/Figure/ablation/sds_guidance_scale/50/A_burger_on_the_table.png" width="19%"><img src="report/Figure/ablation/sds_guidance_scale/100/A_burger_on_the_table.png" width="19%"></td>
+<td><img src="report/Figure/ablation/sdi_inversion_n_steps/1/A_burger_on_the_table.png" width="19%"><img src="report/Figure/ablation/sdi_inversion_n_steps/3/A_burger_on_the_table.png" width="19%"><img src="report/Figure/ablation/sdi_inversion_n_steps/5/A_burger_on_the_table.png" width="19%"><img src="report/Figure/ablation/sdi_inversion_n_steps/10/A_burger_on_the_table.png" width="19%"><img src="report/Figure/ablation/sdi_inversion_n_steps/25/A_burger_on_the_table.png" width="19%"></td>
+<td><img src="report/Figure/ablation/sdi_update_interval/25/A_burger_on_the_table.png" width="19%"><img src="report/Figure/ablation/sdi_update_interval/75/A_burger_on_the_table.png" width="19%"><img src="report/Figure/ablation/sdi_update_interval/200/A_burger_on_the_table.png" width="19%"><img src="report/Figure/ablation/sdi_update_interval/500/A_burger_on_the_table.png" width="19%"><img src="report/Figure/ablation/sdi_update_interval/1000/A_burger_on_the_table.png" width="19%"></td>
+</tr>
+</table>
+
+---
+
+## 💡 Why not just minimize the diffusion loss?
+
+<table>
+<tr><td><b>‖ε̂ − ε‖²</b></td>
+<td><img src="report/Figure/diff_loss/A_dog_sitting_on_grass.png" width="150"><img src="report/Figure/diff_loss/A_castle_next_to_a_river.png" width="150"><img src="report/Figure/diff_loss/A_car_on_the_road.png" width="150"></td></tr>
+<tr><td><b>SDS</b></td>
+<td><img src="report/Figure/sds/A_dog_sitting_on_grass.png" width="150"><img src="report/Figure/sds/A_castle_next_to_a_river.png" width="150"><img src="report/Figure/sds/A_car_on_the_road.png" width="150"></td></tr>
+</table>
+
+Same setup as SDS, but backpropagating the plain diffusion loss through the UNet
+(`scripts/diff_loss.py`). The only difference is one term: the full gradient contains the UNet
+Jacobian ∂ε̂/∂x_t, and SDS drops it. With the Jacobian, the optimizer discovers that tiny
+high-frequency changes are the fastest way to make the UNet's noise prediction more accurate — much
+like an adversarial attack — so the latent turns into colourful noise. Without it, the residual
+ε̂ − ε itself points towards a cleaner image of the prompt, which is why SDS works.
+
+---
+
+## 📂 Code structure
+
+Files marked ✎ were implemented or added for this assignment; the rest is provided scaffolding. Only
+`guidance/sd.py` is part of the graded submission.
 
 ```
-conda create -n lab3 python=3.11
+.
+├── guidance
+│   └── sd.py                  ✎  # get_sds_loss, get_vsd_loss, invert_noise, get_sdi_loss
+├── main.py                       # Latent optimization loop
+├── eval.py / eval.sh             # CLIP evaluation / unified SDS-VSD-SDI runner
+├── scripts                       (helpers for experiments and the report)
+│   ├── ablation_sds.sh        ✎  # SDS guidance_scale sweep
+│   ├── run_vsd.sh             ✎  # VSD main run
+│   ├── run_sdi.sh             ✎  # One SDI configuration on all prompts + CLIP
+│   ├── ablation_sdi.sh        ✎  # SDI main run + both ablations
+│   ├── diff_loss.py           ✎  # Original diffusion loss experiment
+│   └── make_report_assets.py  ✎  # Copies results into report/ and fills the CLIP tables
+├── report                     ✎  # LaTeX report (CVPR template) and main.pdf
+└── template/                     # Report templates provided by the TA
+```
+
+### What was implemented
+
+**SDS** — sample t ∈ [20, 980] and ε, noise the latent, predict with CFG under `no_grad`, and form
+the gradient w(t)(ε̂ − ε) with w(t) = 1 − ᾱ_t. The gradient is handed to the optimizer as an MSE to
+the detached target `latents − grad`, whose derivative is exactly that gradient.
+
+**VSD** — ε_θ from the UNet with the LoRA adapters *disabled* (CFG 7.5), ε_φ from the same UNet with
+them *enabled* (conditional only). The distillation term updates only the latent; a standard
+denoising loss on a detached copy of the latent updates only the LoRA, and both are stepped together.
+
+**SDI** — `invert_noise` is a hand-written deterministic DDIM inversion (η = 0, as allowed; no library
+inversion utilities), walking from 0 to t in n steps with CFG −7.5. `get_sdi_loss` anneals t linearly
+from 980 to 20, and every `update_interval` iterations inverts the latent, predicts the noise with
+CFG 7.5 and one-step denoises it into a cached target. In between, the loss is just the MSE to that
+target, so most iterations need no UNet call.
+
+---
+
+## ⚙️ Reproducing
+
+### Environment
+
+```bash
+conda create -n lab3 python=3.11 -y
 conda activate lab3
 pip install -r requirements.txt
 ```
 
-The pretrained model is Stable Diffusion 2.1-base. Since the original `stabilityai/stable-diffusion-2-1-base` repository is no longer available, we use the community mirror [`sd2-community/stable-diffusion-2-1-base`](https://huggingface.co/sd2-community/stable-diffusion-2-1-base), which hosts the same weights. It is downloaded automatically on the first run; no Hugging Face login is required.
+Stable Diffusion 2.1-base is downloaded automatically from the community mirror
+`sd2-community/stable-diffusion-2-1-base`; no Hugging Face login is needed.
 
----
+### Main results
 
-## Code Structure
+The provided runner generates all 10 prompts and evaluates CLIP:
 
-```
-.
-├── asset/                    # images for README (teaser, method figs)
-│
-├── guidance/                 # implement: get_sds_loss, get_vsd_loss,
-│   └── sd.py                 # invert_noise, get_sdi_loss
-│
-├── template/                 # report templates (for reference only)
-│   ├── LaTeX/                # main.tex
-│   ├── Markdown/             # report.md
-│   └── Typst/                # report.typ
-│
-├── eval.py                   # CLIP evaluation
-├── eval.sh                   # unified evaluator (SDS / VSD / SDI)
-├── main.py                   # training/optimization entry
-├── utils.py                  # helpers (I/O, image save)
-│
-├── requirements.txt
-└── README.md
-```
-
----
-
-## Task 0: Introduction
-Distillation sampling parameterizes the target content (e.g., images) and optimizes the parameters using the gradient of the distillation loss function $\nabla_{x^0} L$. In this assignment, we denote $`c`$ as a text prompt, $`\mathbf{x^{t}}`$ as a noisy sample, $`\epsilon`$ as a random sample from a standard Gaussian distribution, and $`\epsilon_\theta(\cdot, \cdot, \cdot)`$ as a pretrained diffusion model that predicts the noise in the input. 
-
-
-We focus on **text-to-image** (no editing tasks). The evaluation prompts are the default prompts defined in `eval.sh`.  
-For each task, implement the loss function in `guidance/sd.py`. 
-
----
-
-## Task 1 - Score Distillation Sampling (SDS) [20 pts]
-
-<p align="center">
-<img width="768" alt="image" src="./asset/sds.png">
-</p>
-
-In this task, you will generate images using SDS. First, initialize a latent $\mathbf{x^{0}} \sim \mathcal{N}(0, I)$ whose resolution matches that of the pretrained diffusion model ($`1 \times 4 \times 64 \times 64`$). Then randomly sample a timestep $t$ and add noise to the latent, which outputs $`\mathbf{x^{t}}`$ (Equation 4 in [DDIM](https://arxiv.org/abs/2010.02502)). Lastly, feed the noisy latent to the pretrained diffusion model $`\epsilon_\theta(\mathbf{x^{t}}, c, t)`$ and compute the SDS loss provided below, which will be used to update the latent $`x^{0}`$. To visualize the sampled latents, use `decode_latents()` in `guidance/sd.py`.
-
-$$
-\begin{align*} 
-\nabla_{x^{0}} L_{sds}= \mathbb{E}_ {t, \epsilon} \left[ ( \epsilon_\theta(\mathbf{x^{t}}, c, t) - \epsilon ) \right].
-\end{align*}
-$$
-
-### ✅ TODO
-Implement **`get_sds_loss()`** in `guidance/sd.py`.  
-Return a scalar SDS loss given latent $x^0$, text embedding $c$, and CFG guidance.
-
-### 💻 Run Command
-```
-python main.py --prompt "${PROMPT}" --loss_type sds --guidance_scale 25
-```
-
----
-
-## Task 2 - Variational Score Distillation (VSD) [20 pts]
-
-<p align="center">
-<img width="768" alt="image" src="./asset/vsd.png">
-</p>
-
-Variational Score Distillation (VSD) in ProlificDreamer aims to improve the sampling quality of SDS by utilizing [LoRA](https://arxiv.org/abs/2106.09685) to mimic the noise prediction of a pretrained diffusion model. Given the pretrained diffusion model and a LoRA module, denoted as $\phi$, VSD optimizes the following loss:
-
-$$
-\begin{align*} 
-\nabla_{x^{0}} L_{vsd}= \mathbb{E}_ {t, \epsilon} \left[ ( \epsilon_\theta(\mathbf{x^{t}}, c, t) - \epsilon_\phi(\mathbf{x^{t}}, c, t) ) \right].
-\end{align*}
-$$
-
-### ✅ TODO
-Implement **`get_vsd_loss()`** in `guidance/sd.py`.  
-Generate images using the same text prompts provided in Task 1. For VSD, use 7.5 for the `guidance_scale`.
-
-### 💻 Run Command
-```
-python main.py --prompt "${PROMPT}" --loss_type vsd --guidance_scale 7.5 \
-               --lora_lr 1e-4 --lora_loss_weight 1.0 --lora_rank 4
-```
-
----
-
-## Task 3 - Score Distillation via Inversion (SDI) [30 pts]
-
-<p align="center">
-  <img width="768" alt="sdi" src="./asset/sdi.png">
-</p>
-
-SDI improves SDS stability by performing **DDIM inversion** before computing score differences.
-
-<p align="center">
-  <img width="512" alt="sdi_formula" src="./asset/sdi_formula.png">
-</p>
-
-### ✅ TODO
-
-Implement **`invert_noise()`** and **`get_sdi_loss()`** in `guidance/sd.py`, and **complete all in-function `TODO` items**.  
-
-- Write the DDIM inversion loop in `invert_noise()` yourself. You must **NOT** call any built-in inversion utilities (e.g., `DDIMInverseScheduler`, `invert`, `ddim_invert`, `invert_step`) from diffusers or other libraries.
-- You may assume `eta = 0` (deterministic inversion) and ignore `inversion_eta`; no points will be deducted for this.
-
-**Additional Arguments:**
-- `inversion_guidance_scale` (default **-7.5**): CFG scale used **during DDIM inversion** (often negative for stable inversion).
-- `inversion_n_steps` (default **10**): number of inversion steps from `x₀` to `x_t` (more steps = more accurate, slower).
-- `inversion_eta` (default **0.3**): stochasticity of inversion (`0` = deterministic DDIM).
-- `sdi_update_interval` (default **25**): refresh the cached `x₀^{target}` every **N** iterations to reduce cost and jitter.
-
-
-### 💻 Run Command
-```
-python main.py --prompt "${PROMPT}" --loss_type sdi --lr 0.005 --steps 1000 --guidance_scale 7.5 \
-               --inversion_n_steps 10 --inversion_guidance_scale -7.5 \
-               --inversion_eta 0.3 --sdi_update_interval 25
-```
----
-
-## Evaluation
-
-Use the unified evaluation script `eval.sh`:
-
-```
+```bash
 bash eval.sh --sds
 bash eval.sh --vsd --guidance 7.5 --lora-lr 1e-4 --lora-loss-weight 1.0 --lora-rank 4
 bash eval.sh --sdi --guidance 7.5 --lr 0.005 --steps 1000 \
@@ -182,104 +230,17 @@ bash eval.sh --sdi --guidance 7.5 --lr 0.005 --steps 1000 \
              --inversion-eta 0.3 --sdi-update-interval 25
 ```
 
-Each command will:
-1. Generate results for all default prompts.
-2. Run CLIP evaluation automatically and save final results to:
-```
-./outputs/{loss_type}/
-├── <prompt>.png
-└── eval.json
-```
+`eval.sh` always writes to `outputs/{sds,vsd,sdi}/`, so a second run overwrites the first. The
+scripts in `scripts/` give every configuration its own directory instead:
 
----
-
-## What to Submit
-
-Submit `{STUDENT_ID}_lab3.zip` containing:
-```
-./{STUDENT_ID}_lab3.zip/
-├── guidance/sd.py
-├── outputs/{sds,vsd,sdi}/ + eval.json
-└── report.pdf
+```bash
+bash scripts/ablation_sds.sh 0 7.5 15 25 50 100   # -> outputs/ablation/sds_guidance/gs_<v>/
+bash scripts/run_vsd.sh 0                          # -> outputs/vsd/
+bash scripts/ablation_sdi.sh 0                     # -> outputs/sdi/ + outputs/ablation/sdi_*/
+python scripts/diff_loss.py --device 0             # -> outputs/diff_loss/
+python scripts/make_report_assets.py               # -> report/Figure, report/Table
 ```
 
-### Report (30 pts)
-
-Report templates in LaTeX, Markdown, and Typst are provided in `template/`. They are for reference only: you are free to use your own format, as long as the report covers all the items below.
-
-1. Introduction \
-[2 pts] Briefly describe and summarize the goal of this assignment.
-2. Methodology \
-[6 pts] Explain SDS, VSD, and SDI, covering both the concepts and your implementation.
-3. Experiments & Results \
-[6 pts] Provide both quantitative results (CLIP score) and qualitative results (output images). \
-[6 pts] Conduct an ablation study on (1) SDS: `guidance_scale`; (2) SDI: `inversion_n_steps`; (3) SDI: `sdi_update_interval`. \
-[2 pts] Specify all hyperparameters you used for each task.
-4. Discussion \
-[3 pts] Intuitively explain why the original loss function ℒ_Diff = ‖ɛ̂θ(xt, y, t) − εt‖^2 does not produce realistic samples in practice. \
-[3 pts] Intuitively analyze why SDI and VSD perform better than SDS in your own words (without heavy math).
-5. Conclusion \
-[2 pts] Wrap up your report with a short summary.
-
----
-
-## Grading
-
-| Component    | Points  | Description                           |
-| ------------ | ------- | ------------------------------------- |
-| Task 1 - SDS | 20      | Correct implementation + results      |
-| Task 2 - VSD | 20      | Correct implementation + results      |
-| Task 3 - SDI | 30      | Correct implementation + results      |
-| Report       | 30      | Clear analysis, comparisons, insights |
-| **Total**    | **100** |                                       |
-
-### CLIP Score Thresholds
-The CLIP score is the average image-text cosine similarity over all prompts, computed with CLIP ViT-B/32 (`eval.py`).
-
-| CLIP Score | SDS (20 pts) | VSD (20 pts) | SDI (30 pts) |
-| ---------- | ------------ | ------------ | ------------ |
-| ≥ 0.28     | 20 pts       | 20 pts       | 30 pts       |
-| 0.26-0.28  | 15 pts       | 15 pts       | 25 pts       |
-| 0.24-0.26  | 10 pts       | 10 pts       | 20 pts       |
-| < 0.24     | 0            | 0            | 0            |
-
----
-
-## Rules
-
-- Modify **only** `guidance/sd.py`.
-- Plagiarism → automatic zero.
-
----
-
-## Pat This Cat
-If you run into any problems during your implementation, you can pat this cat. It will soothe your soul and bring you good luck!
-
-```
-            ／＞　  フ
-            | 　_　_| 
-          ／` ミ＿xノ 
-         /　　　　 |
-        /　 ヽ　　 ﾉ
-        │　　|　|　|
-    ／￣|　　|　|　|
-   (￣ヽ＿__ ヽ_)__)
-    ＼二)
-```
-
----
-
-## References
-
-[1] Denoising Diffusion Probabilistic Models (https://arxiv.org/abs/2006.11239) \
-[2] Denoising Diffusion Implicit Models (https://arxiv.org/abs/2010.02502) \
-[3] Null-text Inversion (https://arxiv.org/abs/2211.09794) \
-[4] SDEdit: Guided Image Synthesis and Editing with SDE (https://arxiv.org/abs/2108.01073) \
-[5] LoRA: Low-Rank Adaptation of Large Language Models (https://arxiv.org/abs/2106.09685) \
-[6] DreamFusion: Text-to-3D using 2D Diffusion (https://arxiv.org/abs/2209.14988) \
-[7] ProlificDreamer (https://arxiv.org/abs/2305.16213) \
-[8] Score Distillation via Reparametrized DDIM (https://arxiv.org/abs/2405.15891) \
-[9] KAIST CS492(D): Diffusion Models (https://mhsung.github.io/kaist-cs492d-fall-2024/) \
-[10] Previous Lab3 Assignment (by Ying-Huan Chen) (https://github.com/YingHuan-Chen/Lab3-Distillation)
-
----
+The first argument is the GPU index. Approximate time per prompt on an RTX 4090: SDS ~1.5 min,
+VSD ~2 min, SDI ~45 s. `main.py` does not set a random seed, so re-running gives slightly different
+images and scores.
