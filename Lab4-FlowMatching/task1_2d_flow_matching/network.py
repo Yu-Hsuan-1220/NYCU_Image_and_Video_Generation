@@ -83,7 +83,18 @@ class SimpleNet(nn.Module):
 
         ######## TODO ########
         # DO NOT change the code outside this part.
-
+        # Same architecture as Lab 1: a stack of time-conditioned linear
+        # layers followed by a plain output head. Here the head predicts the
+        # velocity field v(x_t, t) instead of the noise.
+        self.num_timesteps = num_timesteps
+        dims = [dim_in] + list(dim_hids)
+        self.layers = nn.ModuleList(
+            [
+                TimeLinear(dims[i], dims[i + 1], num_timesteps)
+                for i in range(len(dims) - 1)
+            ]
+        )
+        self.out_layer = nn.Linear(dims[-1], dim_out)
         ######################
         
     def forward(self, x: torch.Tensor, t: torch.Tensor):
@@ -97,6 +108,12 @@ class SimpleNet(nn.Module):
         """
         ######## TODO ########
         # DO NOT change the code outside this part.
-
+        # FM feeds continuous t in [0, 1]; rescale it to the [0, num_timesteps)
+        # range the sinusoidal embedding was designed for, otherwise most
+        # frequencies barely change across t.
+        t = t * self.num_timesteps
+        for layer in self.layers:
+            x = F.relu(layer(x, t))
+        x = self.out_layer(x)
         ######################
         return x

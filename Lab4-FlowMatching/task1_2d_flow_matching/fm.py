@@ -46,8 +46,9 @@ class FMScheduler(nn.Module):
         ######## TODO ########
         # DO NOT change the code outside this part.
         # compute psi_t(x)
-
-        psi_t = x1
+        # OT conditional path from the FM paper (Eq. 22): a straight line from
+        # the prior sample x (t=0) to a sigma_min-wide Gaussian around x1 (t=1).
+        psi_t = (1 - (1 - self.sigma_min) * t) * x + t * x1
         ######################
 
         return psi_t
@@ -61,7 +62,7 @@ class FMScheduler(nn.Module):
         ######## TODO ########
         # DO NOT change the code outside this part.
         # implement each step of the first-order Euler method.
-        x_next = xt
+        x_next = xt + expand_t(dt, xt) * vt
         ######################
 
         return x_next
@@ -93,12 +94,16 @@ class FlowMatching(nn.Module):
         ######## TODO ########
         # DO NOT change the code outside this part.
         # Implement the CFM objective.
+        # The target is the time derivative of psi_t, which is constant along
+        # the OT path: u_t(psi_t | x1) = x1 - (1 - sigma_min) * x0.
+        xt = self.fm_scheduler.compute_psi_t(x1, t, x0)
+        ut = x1 - (1 - self.fm_scheduler.sigma_min) * x0
         if class_label is not None:
-            model_out = self.network(x1, t, class_label=class_label)
+            model_out = self.network(xt, t, class_label=class_label)
         else:
-            model_out = self.network(x1, t)
+            model_out = self.network(xt, t)
 
-        loss = x1.mean()
+        loss = F.mse_loss(model_out, ut)
         ######################
 
         return loss
@@ -142,8 +147,20 @@ class FlowMatching(nn.Module):
 
             ######## TODO ########
             # Complete the sampling loop
+            dt = t_next - t
+            if do_classifier_free_guidance:
+                # Label 0 is the null class; extrapolate from the
+                # unconditional velocity toward the conditional one.
+                null_label = torch.zeros_like(class_label)
+                v_cond = self.network(xt, t, class_label=class_label)
+                v_uncond = self.network(xt, t, class_label=null_label)
+                vt = v_uncond + guidance_scale * (v_cond - v_uncond)
+            elif class_label is not None:
+                vt = self.network(xt, t, class_label=class_label)
+            else:
+                vt = self.network(xt, t)
 
-            xt = self.fm_scheduler.step(xt, torch.zeros_like(xt), torch.zeros_like(t))
+            xt = self.fm_scheduler.step(xt, vt, dt)
 
             ######################
 
