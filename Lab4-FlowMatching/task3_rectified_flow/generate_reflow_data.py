@@ -83,7 +83,15 @@ def main(args):
         # Use fm.sample() or manually implement the ODE integration
         # to generate z_1 from x_0
 
-        z_1 = x_0  # Replace this with actual generation
+        # Pass x_0 in explicitly so the saved noise is exactly the ODE's start
+        # point; the (x_0, z_1) coupling is what makes the reflow paths straight.
+        z_1 = fm.sample(
+            shape,
+            num_inference_timesteps=args.num_inference_steps,
+            class_label=labels,
+            guidance_scale=args.cfg_scale if args.use_cfg else 1.0,
+            x0=x_0,
+        )
 
         ######################
 

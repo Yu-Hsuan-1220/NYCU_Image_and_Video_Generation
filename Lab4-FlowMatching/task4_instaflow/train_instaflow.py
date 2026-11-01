@@ -109,6 +109,17 @@ def main(args):
         num_classes=num_classes-1,  # Exclude null class
     )
 
+    # Optionally initialize the student from the teacher's weights, as in the
+    # InstaFlow paper. The teacher's v(x_0, 0 | T) already points roughly at
+    # the endpoint of its (nearly straight) trajectory, so distillation starts
+    # close to the target instead of from a random network.
+    if args.init_ckpt:
+        print(f"Initializing student from {args.init_ckpt}")
+        teacher_state = torch.load(args.init_ckpt, map_location="cpu")["state_dict"]
+        network.load_state_dict({
+            k[len("network."):]: v for k, v in teacher_state.items() if k.startswith("network.")
+        })
+
     # Use InstaFlowModel instead of FlowMatching
     instaflow = InstaFlowModel(network, use_lpips=args.use_lpips)
     instaflow = instaflow.to(config.device)
@@ -256,6 +267,8 @@ if __name__ == "__main__":
     parser.add_argument("--cfg_dropout", type=float, default=0.0)
     parser.add_argument("--use_lpips", action="store_true",
                         help="Use LPIPS perceptual loss instead of L2 (improves quality)")
+    parser.add_argument("--init_ckpt", type=str, default=None,
+                        help="Teacher FM checkpoint to initialize the student from (optional)")
     parser.add_argument("--grad_clip", type=float, default=1.0,
                         help="Gradient clipping (0 to disable)")
     args = parser.parse_args()
