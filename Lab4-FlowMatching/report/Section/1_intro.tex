@@ -1,0 +1,17 @@
+\section{Introduction}
+\label{sec:intro}
+% [2 pts] Brief overview of Flow Matching and the assignment objectives.
+
+Diffusion models~\cite{ho2020ddpm,song2021ddim} generate images by gradually removing noise, which usually takes tens to hundreds of network evaluations.
+Flow Matching (FM)~\cite{lipman2023flow} views generation as an ordinary differential equation (ODE): a network learns a velocity field $v_\theta(x,t)$ that moves samples from a Gaussian prior at $t=0$ to the data distribution at $t=1$, and sampling simply integrates this ODE.
+The training target is a simple regression onto the velocity of a straight path between a noise sample and a data sample.
+
+The number of sampling steps is limited by how curved the learned trajectories are.
+Rectified Flow~\cite{liu2023rectified} straightens them by retraining on noise--image pairs produced by the model itself (\emph{reflow}), and InstaFlow~\cite{liu2024instaflow} goes one step further and distills the straightened flow into a \emph{one-step} generator.
+
+This assignment implements the full pipeline:
+(1) FM on a 2D Swiss-roll toy dataset,
+(2) class-conditional FM with classifier-free guidance (CFG)~\cite{ho2021cfg} on AFHQ~\cite{choi2020starganv2} at $64\times64$,
+(3) 1-Rectified Flow for few-step sampling, and
+(4) (bonus) InstaFlow one-step distillation.
+All four tasks reach the full-score thresholds: Chamfer distance 13.49 (Task 1), FID 7.39 at CFG 7.5 (Task 2), FID 5.52 with 5 steps (Task 3) and FID 7.38 with a single step (Task 4).

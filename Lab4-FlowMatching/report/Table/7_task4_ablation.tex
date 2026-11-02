@@ -1,0 +1,19 @@
+\begin{table}[t]
+  \centering
+  \footnotesize
+  \setlength{\tabcolsep}{3pt}
+  \caption{\textbf{Task 4 ablation.} Each variant changes one setting of the full model and is otherwise identical (same distillation data, 100k steps, seed). Loss is averaged over 500 steps (10 at step 0); it includes the LPIPS term except in the L2-only row, so that row is not comparable. FID ($\downarrow$) on 500 one-step samples.}
+  \label{tab:ablation}
+  % values: task4_run.log, task4_ablation_{no_lpips,no_init}.log, results/instaflow-*/eval/fid_results.txt
+  \begin{tabular}{@{}lcccc@{}}
+    \toprule
+    & \multicolumn{3}{c}{Training loss at step} & \\
+    \cmidrule(lr){2-4}
+    Variant & 0 & 20k & 100k & FID \\
+    \midrule
+    Full (L2 + LPIPS, 1-RF init) & 0.080 & 0.031 & 0.005 & 7.38 \\
+    L2 only                      & 0.020 & 0.006 & 0.001 & 6.92 \\
+    Random init                  & 2.463 & 0.071 & 0.009 & 7.31 \\
+    \bottomrule
+  \end{tabular}
+\end{table}

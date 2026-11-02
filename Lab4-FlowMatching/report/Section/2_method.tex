@@ -1,0 +1,125 @@
+\section{Methodology}
+\label{sec:method}
+% [8 pts] Implementation details, key equations, architecture choices.
+
+\subsection{Flow Matching}
+\label{sec:fm}
+Let $x_0\sim\mathcal N(0,I)$ be noise and $x_1$ a data sample.
+FM defines a conditional path $\psi_t(x_0\mid x_1)$ between them and trains $v_\theta$ to match the path's velocity $u_t=\tfrac{d}{dt}\psi_t$ (conditional FM loss, Eq.~23 of~\cite{lipman2023flow}):
+\begin{equation}
+  \mathcal L_{\text{CFM}} = \mathbb E_{t,x_0,x_1}\big\|v_\theta(\psi_t,t) - u_t\big\|^2 .
+  \label{eq:cfm}
+\end{equation}
+Although each conditional path is known, the loss has the same gradient as regressing onto the unknown marginal velocity field, so $v_\theta$ learns $\mathbb E[u_t\mid x_t]$.
+I use straight paths:
+\begin{itemize}
+  \item \textbf{Task 1} (OT path): $\psi_t=(1-(1-\sigma_{\min})t)\,x_0+t\,x_1$, $u_t=x_1-(1-\sigma_{\min})x_0$, with $\sigma_{\min}=0.01$.
+  \item \textbf{Tasks 2--4} (rectified path, as specified for the image tasks): $x_t=(1-t)x_0+t\,x_1$, $u_t=x_1-x_0$.
+\end{itemize}
+$t$ is drawn uniformly from $\{0,\tfrac{1}{1000},\dots,\tfrac{999}{1000}\}$ and $x_0,x_1$ are paired at random.
+The image loss (\texttt{image\_common/fm.py}) is a direct translation of \cref{eq:cfm}:
+\begin{lstlisting}
+def get_loss(self, x1, class_label=None, x0=None):
+    ...  # t ~ U, x0 ~ N(0, I) (provided)
+    t_ = t.view(-1, *([1] * (x1.dim() - 1)))
+    x_t = (1 - t_) * x0 + t_ * x1      # point on the straight path
+    u_t = x1 - x0                      # constant target velocity
+    model_out = self.network(x_t, t, class_label=class_label)
+    return (model_out - u_t).pow(2).mean()
+\end{lstlisting}
+Task 1 is identical except for the OT path in \texttt{compute\_psi\_t} and the target $u_t$:
+\begin{lstlisting}
+psi_t = (1 - (1 - self.sigma_min) * t) * x + t * x1   # compute_psi_t
+ut = x1 - (1 - self.fm_scheduler.sigma_min) * x0       # get_loss
+\end{lstlisting}
+
+\paragraph{Sampling.}
+Starting from $x_0\sim\mathcal N(0,I)$, the ODE $\dot x=v_\theta(x,t)$ is integrated with $N$ uniform Euler steps, $x_{t+\Delta t}=x_t+\Delta t\,v_t$, ending at $t=1$.
+
+\paragraph{Classifier-free guidance.}
+For class-conditional generation the UNet receives a class label $c\in\{1,2,3\}$ (cat, dog, wild), whose embedding is added to the time embedding.
+During training the label is replaced by a null label $0$ with probability 0.1, so a single network learns both $v(x,t\mid c)$ and $v(x,t\mid\varnothing)$.
+At sampling time the two are combined as
+\begin{equation}
+  v_t = v(x_t,t\mid\varnothing) + w\,\big(v(x_t,t\mid c)-v(x_t,t\mid\varnothing)\big),
+  \label{eq:cfg}
+\end{equation}
+where $w>1$ pushes samples further toward the class.
+The sampling loop combines the Euler step and CFG:
+\begin{lstlisting}
+for i in range(num_inference_timesteps):  # t: 0 -> 1
+    ...
+    dt = expand_t(t_next - t, xt)
+    if do_classifier_free_guidance:
+        null_labels = torch.zeros_like(class_label)
+        v_cond = self.network(xt, t, class_label=class_label)
+        v_uncond = self.network(xt, t, class_label=null_labels)
+        vt = v_uncond + guidance_scale * (v_cond - v_uncond)
+    else:
+        vt = self.network(xt, t, class_label=class_label)
+    xt = self.fm_scheduler.step(xt, vt, dt)   # xt + dt * vt
+\end{lstlisting}
+
+\paragraph{Task 1 network.}
+The velocity network reuses the Lab 1 \texttt{SimpleNet}: three time-conditioned linear layers (each output is scaled by an embedding of $t$) with ReLU, followed by a linear head.
+Lab 1 fed integer timesteps to the sinusoidal embedding, whereas FM uses $t\in[0,1]$; I multiply $t$ by 1000 before embedding so the embedding varies over its intended range.
+\begin{lstlisting}
+def forward(self, x, t):
+    t = t * self.num_timesteps   # [0, 1] -> [0, 1000)
+    for layer in self.layers:    # TimeLinear x3
+        x = F.relu(layer(x, t))
+    return self.out_layer(x)
+\end{lstlisting}
+
+\subsection{Rectified Flow (Task 3)}
+\label{sec:rf}
+Because $x_0$ and $x_1$ are paired at random, straight conditional paths cross each other, and the averaged field $\mathbb E[u_t\mid x_t]$ produces \emph{curved} trajectories that need many Euler steps.
+Reflow~\cite{liu2023rectified} replaces the random pairing with the deterministic pairing defined by the trained model:
+\begin{enumerate}
+  \item sample $x_0\sim\mathcal N(0,I)$ and a label $c$, and integrate the Task 2 model (20 steps, CFG 7.5) to obtain $z_1=\Phi(x_0)$;
+  \item store $N=50{,}000$ triplets $(x_0,z_1,c)$;
+  \item train a new model from scratch with the same loss (\cref{eq:cfm}) on $x_t=(1-t)x_0+t z_1$, $u_t=z_1-x_0$.
+\end{enumerate}
+ODE trajectories never cross, so the new pairs conflict far less and the retrained (1-RF) field is much straighter while generating the same distribution.
+The only implementation detail that matters is to start the ODE from the \emph{saved} $x_0$ (passed explicitly to the sampler); otherwise the pairing is random again.
+\begin{lstlisting}
+# generate_reflow_data.py (x_0 and labels sampled above)
+z_1 = fm.sample(
+    shape,
+    num_inference_timesteps=args.num_inference_steps,
+    class_label=labels,
+    guidance_scale=args.cfg_scale if args.use_cfg else 1.0,
+    x0=x_0,   # keep the (x_0, z_1) coupling
+)
+\end{lstlisting}
+
+\subsection{InstaFlow (Task 4)}
+\label{sec:instaflow}
+If trajectories were perfectly straight, one Euler step $x_1=x_0+v(x_0,0)$ would be exact.
+InstaFlow trains a student for exactly this one-step map (Eq.~6 of~\cite{liu2024instaflow}):
+\begin{equation}
+  \mathcal L = \big\|x_0 + v_\theta(x_0,0\mid c) - x_1\big\|^2 + \mathcal L_{\text{LPIPS}},
+\end{equation}
+where $(x_0,x_1)$ are 50k pairs generated by the 1-RF teacher (20 steps, CFG $\alpha_2=1.5$) and LPIPS~\cite{zhang2018lpips} is an optional perceptual loss.
+Guidance is baked into the targets, so sampling needs a single network evaluation without CFG.
+\begin{lstlisting}
+# get_loss
+t_zero = torch.zeros(x0.shape[0], device=self.device)
+v_pred = self.network(x0, t_zero, class_label=class_label)
+x1_pred = x0 + v_pred                # one Euler step
+loss = (x1_pred - x1).pow(2).mean()
+if self.use_lpips:
+    loss = loss + self.lpips_fn(x1_pred.clamp(-1, 1), x1.clamp(-1, 1)).mean()
+
+# sample: one network call, no CFG
+x_1 = x_T + self.network(x_T, t_zero, class_label=class_label)
+\end{lstlisting}
+Following the InstaFlow paper, I initialize the student from the 1-RF teacher instead of from scratch (\cref{sec:modified}).
+The full pipeline is: FM (CFG 7.5) $\rightarrow$ 1-RF $\rightarrow$ InstaFlow (CFG 1.5) $\rightarrow$ one step.
+
+\input{Table/1_hparams}
+
+\subsection{Implementation Details}
+\Cref{tab:hparams} lists the configurations, which follow the provided defaults.
+Image quality is measured by FID~\cite{heusel2017fid} between 500 generated samples (random classes) and the 1,500 AFHQ validation images with the provided AFHQ Inception network.
+I used PyTorch 2.8, so checkpoints, which store the whole network object, were loaded with \texttt{TORCH\_FORCE\_NO\_WEIGHTS\_ONLY\_LOAD=1}.

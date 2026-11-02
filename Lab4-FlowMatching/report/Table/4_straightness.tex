@@ -1,0 +1,15 @@
+\begin{table}[t]
+  \centering
+  \footnotesize
+  \caption{\textbf{Trajectory straightness} $S$ ($\downarrow$, \cref{eq:straight}) over 256 trajectories of 20 Euler steps, using the same noise and labels for both models.}
+  \label{tab:straight}
+  % values: report/Figure/analysis_results.json
+  \begin{tabular}{@{}lcc@{}}
+    \toprule
+    Sampling guidance & Base FM & 1-RF \\
+    \midrule
+    CFG 1.0 (learned field) & 0.0222 & \textbf{0.0016} \\
+    CFG 7.5                 & \textbf{0.0419} & 0.5946 \\
+    \bottomrule
+  \end{tabular}
+\end{table}

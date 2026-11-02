@@ -1,0 +1,14 @@
+\section{Additional Modified Files}
+\label{sec:modified}
+
+Besides the required TODO files, I modified one script, included in the submission:
+
+\paragraph{\texttt{task4\_instaflow/train\_instaflow.py}.}
+\begin{itemize}
+  \item \textbf{Change.} Added an optional argument \texttt{--init\_ckpt} that loads the weights of a Flow Matching checkpoint (the 1-RF teacher) into the student UNet before training. Without the flag, the script behaves exactly as provided.
+  \item \textbf{Rationale.} The InstaFlow paper initializes the one-step student from the rectified-flow teacher. The provided script trains it from random weights, and the assignment warns that one-step distillation is sensitive and can collapse. Starting from the teacher is a cheap way to avoid both slow convergence and collapse.
+  \item \textbf{Effect.} The 1-RF velocity at $t=0$ already approximates the endpoint, so the student generates recognizable images before any distillation update (initial loss 0.08 vs.\ 2.46 from random weights). The ablation (\cref{tab:ablation}) shows that this mainly \emph{speeds up convergence}: the random-init student needs about 20k steps to catch up, while the final FID after 100k steps is the same (7.38 vs.\ 7.31). With a shorter training budget, the initialization would matter more.
+\end{itemize}
+
+All other changes are inside the TODO blocks.
+Helper scripts in \texttt{scripts/} (run pipelines and report figures) only call the provided entry points and do not change their behavior.

@@ -1,0 +1,55 @@
+\section{Discussion}
+\label{sec:discussion}
+% [6 pts] Analysis, challenges, related work, answers to the discussion questions.
+
+\subsection{Why does Rectified Flow enable faster sampling?}
+Euler integration is exact only for straight trajectories; on a curved trajectory a large step overshoots the curve, so few-step sampling loses quality.
+Base FM is curved because it averages the directions of many randomly paired straight paths that cross at the same $x_t$.
+Reflow trains on pairs that are already connected by the model's own (non-crossing) ODE, so each $x_t$ has essentially one target direction.
+This shows up in three ways in our results: a $10\times$ lower training loss (\cref{fig:loss}), a $14\times$ smaller straightness $S$ (\cref{tab:straight}), and the endpoint already being predictable at $t=0$ (\cref{fig:x1hat}).
+As a result, 5 steps of 1-RF match 20 steps of base FM, and without guidance even 2 steps of 1-RF beat 20 steps of base FM (\cref{tab:task3_cfg}).
+1-RF learns the teacher's distribution rather than the data: without extra guidance it reproduces the teacher's quality (FID 6.96 vs.\ 7.39), but in far fewer steps.
+
+\subsection{InstaFlow discussion questions}
+\paragraph{Q1: Why two phases instead of distilling FM directly?}
+A one-step student must learn the map $x_0\mapsto x_1$ in one shot.
+For base FM this map follows curved trajectories and is highly non-linear, so it is hard to fit and tends to give blurry averages.
+After reflow the trajectories are nearly straight, so the map is close to $x_0+v(x_0,0)$, which the 1-RF network already computes; distillation only corrects a small residual.
+This is also why initializing the student from 1-RF works so well.
+
+\paragraph{Q2: Why not use LPIPS in Phase 1?}
+Reflow regresses a velocity field at every $t$, including intermediate, noisy $x_t$.
+The L2 regression is what makes the learned field the conditional expectation of the velocity, which preserves the generated distribution; a perceptual loss is defined on clean images, is meaningless on velocities, and would bias the field away from a valid flow.
+In Phase 2 the student outputs a final image, so a perceptual loss applies naturally.
+
+\paragraph{Q3: Effect of LPIPS in Phase 2.}
+Conceptually, L2 alone penalizes pixel errors uniformly, and when the target is uncertain the optimum is a blurry average; LPIPS compares deep features and rewards sharp textures and edges.
+In our setting, however, LPIPS has no measurable effect: the L2-only student reaches a similar FID (6.92 vs.\ 7.38, \cref{tab:ablation}) and visually the same samples (\cref{fig:abl_samples}).
+A likely reason is that the targets here are \emph{not} uncertain: each noise has one deterministic teacher image, and the 1-RF student starts close to it, so L2 alone does not blur.
+LPIPS should matter more when the map is harder to fit, \eg higher resolutions or a less straight teacher.
+
+\paragraph{Q4: Quality--speed trade-off.}
+From \cref{tab:task4}, going from 100 network evaluations (base FM) to 40 (1-RF) costs almost no quality (FID 5.47 vs.\ 5.54), and going to a single evaluation gives a further $40\times$ speed-up for $\sim$1.8 FID.
+For this task the one-step model is a good trade-off; when the best quality matters, 1-RF with 10--20 steps is preferable.
+
+\paragraph{Q5: Why $\alpha_1=7.5$ but $\alpha_2=1.5$?}
+In Phase 1 a high guidance scale makes the reflow targets class-specific and sharp, which gives a good teacher.
+Its effect is then stored in the 1-RF weights: without any guidance, 1-RF already matches the teacher's FID (\cref{tab:task3_cfg}).
+Applying a large scale again makes the 1-RF trajectory bend sharply in its first step ($S=0.59$ vs.\ $0.0016$ without guidance, \cref{tab:straight}).
+Multi-step sampling can correct this bend, but a one-step map cannot: sampling 1-RF with one step at CFG 7.5 produces mostly saturated images (\cref{fig:few_steps}), while one step without guidance already gives clean animals.
+A one-step student needs a nearly straight teacher, so a mild $\alpha_2=1.5$ keeps the trajectories straight while still adding some guidance (teacher FID 5.54, between 6.96 at CFG 1.0 and 3.29 at CFG 7.5).
+I did not train a student with a large $\alpha_2$, so this reasoning is not verified by a full ablation.
+
+\subsection{Challenges}
+\begin{itemize}
+  \item \textbf{Time input of the Task 1 network.} The Lab 1 sinusoidal embedding expects integer timesteps up to 1000, but FM uses $t\in[0,1]$, so the embedding barely changed over time. Rescaling $t$ by 1000 fixed this.
+  \item \textbf{Keeping the reflow coupling.} The reflow pairs are only meaningful if $z_1$ is generated from the \emph{saved} $x_0$. Letting the sampler draw its own noise would silently return random pairs, so I pass $x_0$ to the sampler explicitly.
+  \item \textbf{A counter-intuitive straightness result.} At CFG 7.5, 1-RF first appeared \emph{less} straight than base FM. Measuring per-step deviations showed that almost all of it comes from the CFG-amplified first step, while the learned field itself is $14\times$ straighter (\cref{tab:straight}).
+  \item \textbf{Noisy evaluation.} 500-sample FID fluctuates (\eg base FM is better with 5 steps than with 10) and even scores broken samples well (\cref{fig:few_steps}), so I always checked FID together with sample images.
+\end{itemize}
+
+\subsection{Comparison with related work}
+DDIM~\cite{song2021ddim} reduces sampling steps by a deterministic sampler but still needs tens of steps.
+Progressive distillation~\cite{salimans2022progressive} and consistency models~\cite{song2023consistency} also reach few-step generation, by repeatedly halving the step count or by enforcing self-consistency along trajectories.
+InstaFlow is simpler: reflow first makes the trajectories straight, after which a plain regression onto the endpoints suffices.
+Our result, one step with FID 7.38 against 5.47 for 50 steps, mirrors the paper's finding that reflow is the key to making one-step distillation work.

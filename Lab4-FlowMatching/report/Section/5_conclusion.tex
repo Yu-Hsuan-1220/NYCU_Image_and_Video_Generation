@@ -1,0 +1,11 @@
+\section{Conclusion}
+\label{sec:conclusion}
+% [2 pts] Summary of findings and future work.
+
+I implemented Flow Matching, Rectified Flow and InstaFlow and reached all full-score thresholds: CD 13.49 on the Swiss roll, FID 7.39 on AFHQ with CFG 7.5, FID 5.52 with 5 steps after one reflow, and FID 7.38 with a single step after distillation.
+The main lesson is that sampling cost is governed by trajectory curvature: reflow makes the learned field about $14\times$ straighter, which gives a $\sim$4$\times$ speed-up at equal quality, and the straight field can then be distilled into a generator that is about $100\times$ faster than the original model.
+Guidance interacts with this: strong CFG re-introduces a large first-step jump, which is why distillation uses a mild guidance scale.
+The ablation shows that the distilled map is determined mostly by the teacher: neither LPIPS nor the 1-RF initialization changes the final FID, although the initialization speeds up convergence considerably.
+
+\paragraph{Future work.}
+Natural next steps are a second reflow (2-RF) as the distillation teacher, larger evaluation sets for less noisy FID, and higher-order ODE solvers for the multi-step models.

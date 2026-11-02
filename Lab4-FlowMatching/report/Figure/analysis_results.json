@@ -1,0 +1,16 @@
+{
+  "rerun_chamfer_distance": 18.679463809263105,
+  "straightness_cfg1.0": {
+    "base_fm": 0.022248856723308563,
+    "1rf": 0.0015520625747740269
+  },
+  "straightness_cfg7.5": {
+    "base_fm": 0.04185102880001068,
+    "1rf": 0.5946136713027954
+  },
+  "timing_500_samples_sec": {
+    "Base FM (50 steps, CFG 7.5)": 175.30294585227966,
+    "1-RF (20 steps, CFG 1.5)": 70.19329190254211,
+    "InstaFlow (1 step)": 1.7594101428985596
+  }
+}

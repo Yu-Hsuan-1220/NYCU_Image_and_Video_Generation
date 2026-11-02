@@ -1,0 +1,21 @@
+\begin{table}[t]
+  \centering
+  \footnotesize
+  \setlength{\tabcolsep}{3pt}
+  \caption{\textbf{Training configuration.} Task 1 uses a 3-layer MLP of width 128; Tasks 2--4 share the same UNet (channels 128, multipliers $[1,2,2,2]$, attention at the 2nd level, 4 res-blocks per level). All runs use Adam on a single RTX 4090.}
+  \label{tab:hparams}
+  \begin{tabular}{@{}lccc@{}}
+    \toprule
+    & Task 1 & Task 2 / 3 & Task 4 \\
+    \midrule
+    Network     & MLP & UNet & UNet \\
+    Init.       & random & random & 1-RF \\
+    Batch       & 128 & 16 & 16 \\
+    Steps       & 5k & 100k & 100k \\
+    LR          & $5\!\times\!10^{-4}$ & $2\!\times\!10^{-4}$ & $2\!\times\!10^{-4}$ \\
+    Warm-up     & -- & 200 & 5k + cosine \\
+    CFG dropout & -- & 0.1 & 0 \\
+    Loss        & CFM & CFM & L2 + LPIPS \\
+    \bottomrule
+  \end{tabular}
+\end{table}

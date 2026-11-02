@@ -1,0 +1,17 @@
+\begin{table}[t]
+  \centering
+  \footnotesize
+  \setlength{\tabcolsep}{2.5pt}
+  \caption{\textbf{Task 4: full pipeline.} FID ($\downarrow$) on 500 samples. Timing for 500 samples was measured in one process on the same GPU (batch 128). Speed-up is relative to base FM (50 steps) and to the 1-RF teacher (20 steps).}
+  \label{tab:task4}
+  % values: results/instaflow-11-01-233319/eval/fid_results.txt, report/Figure/analysis_results.json
+  \begin{tabular}{@{}lcccccc@{}}
+    \toprule
+    Model & Steps & NFE & FID & Img/s & vs.\ FM & vs.\ 1-RF \\
+    \midrule
+    Base FM (CFG 7.5)  & 50 & 100 & 5.47 & 2.9 & 1$\times$ & -- \\
+    1-RF (CFG 1.5)     & 20 & 40  & 5.54 & 7.1 & 2.5$\times$ & 1$\times$ \\
+    \textbf{InstaFlow} & \textbf{1} & \textbf{1} & \textbf{7.38} & \textbf{284} & \textbf{99.6$\times$} & \textbf{39.9$\times$} \\
+    \bottomrule
+  \end{tabular}
+\end{table}

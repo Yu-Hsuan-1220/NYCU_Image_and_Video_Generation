@@ -1,0 +1,19 @@
+\begin{table}[t]
+  \centering
+  \footnotesize
+  \caption{\textbf{Task 2: FID} ($\downarrow$) of the base FM model, 500 samples. NFE: network evaluations per sample (CFG doubles it).}
+  \label{tab:task2}
+  % values: results/cfg_fm-11-01-023216/eval/fid_results.txt
+  \begin{tabular}{@{}lccc@{}}
+    \toprule
+    Setting & Steps & NFE & FID \\
+    \midrule
+    CFG 1.0 & 20 & 20  & 12.18 \\
+    CFG 3.0 & 20 & 40  & 12.13 \\
+    \textbf{CFG 7.5} & \textbf{20} & \textbf{40} & \textbf{7.39} \\
+    \midrule
+    CFG 7.5 & 10 & 20  & 8.14 \\
+    CFG 7.5 & 50 & 100 & 5.47 \\
+    \bottomrule
+  \end{tabular}
+\end{table}

@@ -30,6 +30,7 @@ Lab2-DDIM-LoRA/task2/runs/
 !Lab3-Distillation/template/**/*.png
 !Lab3-Distillation/report/**/*.png
 !Lab4-FlowMatching/assets/*.png
+!Lab4-FlowMatching/report/**/*.png
 
 # LaTeX build artifacts
 *.aux
